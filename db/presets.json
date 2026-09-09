@@ -1,0 +1,42 @@
+[
+    {
+        "bornType": 0, 
+        "changes": {
+            "transform.pos": [
+                1849.179443359375, 
+                62.0, 
+                570.4299926757812
+            ]
+        }, 
+        "classType": "PresetInstance", 
+        "dimension": 0, 
+        "entityId": "-111669149695", 
+        "isPreLoad": false, 
+        "loadPresetCfg": false, 
+        "maxChunkPos": null, 
+        "minChunkPos": null, 
+        "name": "Zombie", 
+        "objId": "6f301685fd764c019fd0aa3ee6284ed4", 
+        "presetId": "eb767a52-7e6c-4876-a571-7c83b503a8ff", 
+        "presetType": "EntityPreset", 
+        "transform": {
+            "classType": "Transform", 
+            "pos": [
+                1849.179443359375, 
+                62.0, 
+                570.4299926757812
+            ], 
+            "rotation": [
+                0.0, 
+                0, 
+                0
+            ], 
+            "scale": [
+                1.0, 
+                1.0, 
+                1.0
+            ]
+        }, 
+        "virtual": true
+    }
+]

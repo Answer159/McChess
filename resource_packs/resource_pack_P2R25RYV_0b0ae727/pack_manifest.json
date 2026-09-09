@@ -1,0 +1,30 @@
+{
+  "modules": [
+    {
+      "type": "resources",
+      "uuid": "6d3de256-14db-41a3-bc80-7f8ca217cc9d",
+      "version": [
+        0,
+        0,
+        1
+      ],
+      "description": ""
+    }
+  ],
+  "header": {
+    "uuid": "0b0ae727-b23a-4686-bc2b-fdc3ed355555",
+    "version": [
+      0,
+      0,
+      1
+    ],
+    "description": "",
+    "name": "5a6a0e3fcac04c0f97d0618f5d055247",
+    "min_engine_version": [
+      1,
+      18,
+      0
+    ]
+  },
+  "format_version": 2
+}

@@ -1,0 +1,76 @@
+{
+   "main@common.base_screen" : {
+      "controls" : [
+         {
+            "notifyPanel" : {
+               "anchor_from" : "center",
+               "anchor_to" : "center",
+               "controls" : [
+                  {
+                     "notifyLabel" : {
+                        "anchor_from" : "top_left",
+                        "anchor_to" : "top_left",
+                        "auto_expand" : false,
+                        "color" : [ 1, 1, 1 ],
+                        "controls" : [],
+                        "font_size" : "normal",
+                        "layer" : 1,
+                        "offset" : [ "0.00000%+0px", "62%+0px" ],
+                        "shadow" : true,
+                        "size" : [ "100%+0px", "13%+0px" ],
+                        "text" : "红队获得胜利",
+                        "text_alignment" : "center",
+                        "type" : "label",
+                        "visible" : true
+                     }
+                  },
+                  {
+                     "notifyEndLabel" : {
+                        "anchor_from" : "center",
+                        "anchor_to" : "bottom_middle",
+                        "auto_expand" : false,
+                        "color" : [ 1, 0, 0 ],
+                        "controls" : [],
+                        "font_size" : "large",
+                        "layer" : 2,
+                        "offset" : [ "0.00000%+0px", "0%+0px" ],
+                        "shadow" : false,
+                        "size" : [ "100%+0px", "25%+0px" ],
+                        "text" : "游戏结束",
+                        "text_alignment" : "center",
+                        "type" : "label",
+                        "visible" : true
+                     }
+                  },
+                  {
+                     "mimage" : {
+                        "anchor_from" : "center",
+                        "anchor_to" : "bottom_middle",
+                        "controls" : [],
+                        "layer" : 1,
+                        "nineslice_size" : 0,
+                        "offset" : [ "0%", "0%+0px" ],
+                        "size" : [ "170px", "17px" ],
+                        "texture" : "textures/endLogicUI/edge",
+                        "type" : "image",
+                        "uv" : [ 0, 0 ],
+                        "uv_size" : [ 552, 54 ],
+                        "visible" : true
+                     }
+                  }
+               ],
+               "layer" : 1,
+               "nineslice_size" : 0,
+               "offset" : [ "0px", "-20px" ],
+               "size" : [ "180px", "80px" ],
+               "texture" : "textures/endLogicUI/back",
+               "type" : "image",
+               "uv" : [ 0, 0 ],
+               "uv_size" : [ 36, 16 ],
+               "visible" : true
+            }
+         }
+      ]
+   },
+   "namespace" : "endLogicUI"
+}

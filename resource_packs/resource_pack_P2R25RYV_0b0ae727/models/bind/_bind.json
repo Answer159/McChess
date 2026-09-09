@@ -1,0 +1,49 @@
+{
+    "description": {
+        "file_type": "bind",
+        "model": "",
+        "model_type": ""
+    },
+    "editor": {
+        "show": {
+            "default": true
+        }
+    },
+    "model": {
+        "": {
+            "animation": {
+                "": "default"
+            },
+            "bind": {
+                "default": {
+                    "head": {
+                        "effect": {
+                            "skill": {
+                                "bind_effect": [
+                                    {
+                                        "path": "effects/tree.json",
+                                        "visible": true,
+                                        "type": "frame",
+                                        "delay": 0.0
+                                    },
+                                    {
+                                        "path": "effects/fire.json",
+                                        "visible": true,
+                                        "type": "frame",
+                                        "delay": 0.0
+                                    }
+                                ],
+                                "bind_model": [],
+                                "bind_offset": [0.0, 0.0, 0.0],
+                                "bind_rotate": [0.0, 0.0, 0.0]
+                            }
+                        }
+                    }
+                }
+            },
+            "animation_speed": {},
+            "sounds": {}
+        }
+    },
+    "version": "1.2.0"
+}

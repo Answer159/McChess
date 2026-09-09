@@ -1,7 +1,13 @@
 {
-    "Arena.Component.Namespace": "cheese",
-    "FirstTabSetting": 0,
+    "Arena.Component.Namespace": "wihzo",
+    "FirstTabSetting": 1,
     "ShortItemSettings": [
-        "resource_packs\\resource_pack_Pl50s1Bz\\textures"
-    ]
+        "resource_packs\\resource_pack_P2R25RYV_0b0ae727\\ui",
+        "behavior_packs\\behavior_pack_864FhZqu_7ec35a94\\Presets",
+        "resource_packs\\resource_pack_P2R25RYV_0b0ae727\\effects",
+        "resource_packs\\resource_pack_P2R25RYV_0b0ae727\\models",
+        "resource_packs\\resource_pack_P2R25RYV_0b0ae727\\textures"
+    ],
+    "Uluru.autoLayerDict": {},
+    "Uluru.checkSuspectOldUI": true
 }

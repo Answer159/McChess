@@ -1,0 +1,53 @@
+{
+   "main@common.base_screen" : {
+      "controls" : [
+         {
+            "mainPanel" : {
+               "anchor_from" : "top_left",
+               "anchor_to" : "top_left",
+               "controls" : [
+                  {
+                     "leftImage" : {
+                        "anchor_from" : "top_left",
+                        "anchor_to" : "top_left",
+                        "controls" : [],
+                        "layer" : 1,
+                        "nineslice_size" : 0,
+                        "offset" : [ "10%+0px", "8%+0px" ],
+                        "size" : [ "12px", "12px" ],
+                        "texture" : "textures/ui/life",
+                        "type" : "image",
+                        "uv" : [ 0, 0 ],
+                        "uv_size" : [ 41, 45 ],
+                        "visible" : true
+                     }
+                  },
+                  {
+                     "rightLabel" : {
+                        "anchor_from" : "top_left",
+                        "anchor_to" : "top_left",
+                        "auto_expand" : false,
+                        "color" : [ 1, 1, 1 ],
+                        "controls" : [],
+                        "font_size" : "Normal",
+                        "layer" : 1,
+                        "offset" : [ "10%+15px", "8%+0px" ],
+                        "size" : [ "30px", "15px" ],
+                        "text" : "xui",
+                        "text_alignment" : "left",
+                        "type" : "label",
+                        "visible" : true
+                     }
+                  }
+               ],
+               "layer" : 0,
+               "offset" : [ "0%+0px", "0%+0px" ],
+               "size" : [ "100%+0px", "100%+0px" ],
+               "type" : "panel",
+               "visible" : true
+            }
+         }
+      ]
+   },
+   "namespace" : "limitedRespawnUI"
+}

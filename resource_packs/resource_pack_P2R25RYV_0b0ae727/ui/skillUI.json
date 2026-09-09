@@ -1,0 +1,299 @@
+{
+   "bg1" : {
+      "anchor_from" : "center",
+      "anchor_to" : "center",
+      "controls" : [],
+      "layer" : 1,
+      "offset" : [ 0, 0 ],
+      "size" : [ "100%", "100%" ],
+      "texture" : "textures/skillUI/bg01@3x",
+      "type" : "image",
+      "visible" : true
+   },
+   "bg2" : {
+      "anchor_from" : "center",
+      "anchor_to" : "center",
+      "controls" : [],
+      "layer" : 1,
+      "offset" : [ 0, 0 ],
+      "size" : [ "100%", "100%" ],
+      "texture" : "textures/skillUI/bg01@3x",
+      "type" : "image",
+      "visible" : true
+   },
+   "bg3" : {
+      "anchor_from" : "center",
+      "anchor_to" : "center",
+      "controls" : [],
+      "layer" : 1,
+      "offset" : [ 0, 0 ],
+      "size" : [ "100%", "100%" ],
+      "texture" : "textures/skillUI/bg01@3x",
+      "type" : "image",
+      "visible" : true
+   },
+   "button1@common.button" : {
+      "$default_color" : [ 1, 1, 1 ],
+      "$default_texture" : "",
+      "$labelText" : "",
+      "$label_font_size" : "normal",
+      "$pressed_button_name" : "%skillUI.OnSkillUIButton1Pressed",
+      "anchor_from" : "center",
+      "anchor_to" : "center",
+      "controls" : [
+         {
+            "default" : {
+               "layer" : 0,
+               "texture" : "$default_texture",
+               "type" : "image"
+            }
+         },
+         {
+            "hover" : {
+               "layer" : 0,
+               "texture" : "",
+               "type" : "image"
+            }
+         },
+         {
+            "pressed" : {
+               "layer" : 0,
+               "texture" : "",
+               "type" : "image"
+            }
+         },
+         {
+            "button_label" : {
+               "color" : "$default_color",
+               "font_size" : "$label_font_size",
+               "layer" : 5,
+               "shadow" : false,
+               "text" : "$labelText",
+               "type" : "label"
+            }
+         }
+      ],
+      "layer" : 2,
+      "offset" : [ 0, 0 ],
+      "size" : [ "100%-1.33px", "100%-1.33px" ],
+      "visible" : true
+   },
+   "button2@common.button" : {
+      "$default_color" : [ 1, 1, 1 ],
+      "$default_texture" : "",
+      "$labelText" : "",
+      "$label_font_size" : "normal",
+      "$pressed_button_name" : "%skillUI.OnSkillUIButton2Pressed",
+      "anchor_from" : "center",
+      "anchor_to" : "center",
+      "controls" : [
+         {
+            "default" : {
+               "layer" : 0,
+               "texture" : "$default_texture",
+               "type" : "image"
+            }
+         },
+         {
+            "hover" : {
+               "layer" : 0,
+               "texture" : "",
+               "type" : "image"
+            }
+         },
+         {
+            "pressed" : {
+               "layer" : 0,
+               "texture" : "",
+               "type" : "image"
+            }
+         },
+         {
+            "button_label" : {
+               "color" : "$default_color",
+               "font_size" : "$label_font_size",
+               "layer" : 5,
+               "shadow" : false,
+               "text" : "$labelText",
+               "type" : "label"
+            }
+         }
+      ],
+      "layer" : 2,
+      "offset" : [ 0, 0 ],
+      "size" : [ "100%-1.33px", "100%-1.33px" ],
+      "visible" : true
+   },
+   "button3@common.button" : {
+      "$default_color" : [ 1, 1, 1 ],
+      "$default_texture" : "",
+      "$labelText" : "",
+      "$label_font_size" : "normal",
+      "$pressed_button_name" : "%skillUI.OnSkillUIButton3Pressed",
+      "anchor_from" : "center",
+      "anchor_to" : "center",
+      "controls" : [
+         {
+            "default" : {
+               "layer" : 0,
+               "texture" : "$default_texture",
+               "type" : "image"
+            }
+         },
+         {
+            "hover" : {
+               "layer" : 0,
+               "texture" : "",
+               "type" : "image"
+            }
+         },
+         {
+            "pressed" : {
+               "layer" : 0,
+               "texture" : "",
+               "type" : "image"
+            }
+         },
+         {
+            "button_label" : {
+               "color" : "$default_color",
+               "font_size" : "$label_font_size",
+               "layer" : 5,
+               "shadow" : false,
+               "text" : "$labelText",
+               "type" : "label"
+            }
+         }
+      ],
+      "layer" : 2,
+      "offset" : [ 0, 0 ],
+      "size" : [ "100%-1.33px", "100%-1.33px" ],
+      "visible" : true
+   },
+   "label" : {
+      "anchor_from" : "top_middle",
+      "anchor_to" : "top_middle",
+      "auto_expand" : false,
+      "color" : [ 1, 1, 0, 0.80 ],
+      "controls" : [],
+      "font_size" : "large",
+      "layer" : 5,
+      "offset" : [ "0%+0px", "20%+0px" ],
+      "shadow" : false,
+      "size" : [ "50%+0px", "20%+0px" ],
+      "text" : "",
+      "text_alignment" : "center",
+      "type" : "label",
+      "visible" : true
+   },
+   "main@common.base_screen" : {
+      "controls" : [
+         {
+            "hint_label@skillUI.label" : {}
+         },
+         {
+            "skill_panel1" : {
+               "anchor_from" : "top_left",
+               "anchor_to" : "top_left",
+               "controls" : [
+                  {
+                     "button@skillUI.button1" : {}
+                  },
+                  {
+                     "button_mask@skillUI.mask1" : {}
+                  },
+                  {
+                     "button_bg@skillUI.bg1" : {}
+                  }
+               ],
+               "layer" : 0,
+               "offset" : [ "77%", "80%" ],
+               "size" : [ "6%", "10%" ],
+               "type" : "panel",
+               "visible" : false
+            }
+         },
+         {
+            "skill_panel2" : {
+               "anchor_from" : "top_left",
+               "anchor_to" : "top_left",
+               "controls" : [
+                  {
+                     "button@skillUI.button2" : {}
+                  },
+                  {
+                     "button_mask@skillUI.mask2" : {}
+                  },
+                  {
+                     "button_bg@skillUI.bg2" : {}
+                  }
+               ],
+               "layer" : 0,
+               "offset" : [ "79%", "62%" ],
+               "size" : [ "6%", "10%" ],
+               "type" : "panel",
+               "visible" : false
+            }
+         },
+         {
+            "skill_panel3" : {
+               "anchor_from" : "top_left",
+               "anchor_to" : "top_left",
+               "controls" : [
+                  {
+                     "button@skillUI.button3" : {}
+                  },
+                  {
+                     "button_mask@skillUI.mask3" : {}
+                  },
+                  {
+                     "button_bg@skillUI.bg3" : {}
+                  }
+               ],
+               "layer" : 0,
+               "offset" : [ "89%", "56%" ],
+               "size" : [ "6%", "10%" ],
+               "type" : "panel",
+               "visible" : false
+            }
+         }
+      ]
+   },
+   "mask1" : {
+      "anchor_from" : "center",
+      "anchor_to" : "center",
+      "controls" : [],
+      "is_new_nine_slice" : true,
+      "layer" : 4,
+      "offset" : [ 0, 0 ],
+      "size" : [ "100%", "100%" ],
+      "texture" : "textures/skillUI/mask_01@3x",
+      "type" : "image",
+      "visible" : false
+   },
+   "mask2" : {
+      "anchor_from" : "center",
+      "anchor_to" : "center",
+      "controls" : [],
+      "is_new_nine_slice" : true,
+      "layer" : 4,
+      "offset" : [ 0, 0 ],
+      "size" : [ "100%", "100%" ],
+      "texture" : "textures/skillUI/mask_01@3x",
+      "type" : "image",
+      "visible" : false
+   },
+   "mask3" : {
+      "anchor_from" : "center",
+      "anchor_to" : "center",
+      "controls" : [],
+      "is_new_nine_slice" : true,
+      "layer" : 4,
+      "offset" : [ 0, 0 ],
+      "size" : [ "100%", "100%" ],
+      "texture" : "textures/skillUI/mask_01@3x",
+      "type" : "image",
+      "visible" : false
+   },
+   "namespace" : "skillUI"
+}

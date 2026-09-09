@@ -1,0 +1,42 @@
+{
+  "effect": [
+    {
+      "path": "effects/tree.json",
+      "type": "frame"
+    },
+    {
+      "path": "effects/fire.json",
+      "type": "frame"
+    }
+  ],
+  "model": [
+    {
+      "animation": {
+        "": [
+          {
+            "bind_alias": "skill",
+            "bind_bone": "",
+            "bind_class": "default",
+            "bind_effect": [
+              {
+                "index": 1,
+                "time": "",
+                "visible": "true"
+              },
+              {
+                "index": 0,
+                "time": "",
+                "visible": "true"
+              }
+            ],
+            "bind_mirror": "0 0 0",
+            "bind_offset": "0.00 0.00 0.00",
+            "bind_rotate": "0.00 0.00 0.00"
+          }
+        ]
+      },
+      "name": "",
+      "type": ""
+    }
+  ]
+}

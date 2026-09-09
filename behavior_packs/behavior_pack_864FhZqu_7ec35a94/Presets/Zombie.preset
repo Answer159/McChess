@@ -1,0 +1,74 @@
+{
+    "behaviorAttrs": {
+        "SetBlockControlAi": true,
+        "SetImmuneDamage": false,
+        "SetPersistence": true
+    },
+    "boxDataList": [],
+    "childParts": [
+        {
+            "bpType": "TriggerPart",
+            "changes": {},
+            "classType": "PartInstance",
+            "clientPartType": null,
+            "customVariables": [],
+            "directoryPath": "Trigger",
+            "metaType": "TriggerPartMeta",
+            "objId": "6d8dadd2835744ae90e45a841f4e32e2",
+            "partId": "Trigger",
+            "partType": "TriggerPart"
+        },
+        {
+            "bpType": "PortalPart",
+            "changes": {},
+            "classType": "PartInstance",
+            "clientPartType": null,
+            "customVariables": [],
+            "directoryPath": "Portal",
+            "metaType": "PortalPartMeta",
+            "objId": "c93d51ce8375433ca8291720acae97df",
+            "partId": "Portal",
+            "partType": "PortalPart"
+        }
+    ],
+    "childPresets": [],
+    "classType": "EntityPreset",
+    "dimension": 0,
+    "engineTypeStr": "wihzo:entity",
+    "entityAttrs": {
+        "SetDamageValue": 3.0,
+        "SetHealthValue": 20.0,
+        "SetLavaSpeedValue": 0.019999999552965164,
+        "SetSpeedValue": 0.23000000417232513
+    },
+    "forceLoad": false,
+    "isValid": true,
+    "name": "Zombie",
+    "notifyRemove": true,
+    "objId": "7bf3f61a2f444e70abce0d3041cef275",
+    "oxygenAttrs": {
+        "SetAirSeconds": 15,
+        "SetRecoverTotalAirSupplyTime": 0.0
+    },
+    "physicsAttrs": {
+        "SetGravity": 0.0,
+        "SetPushable": true
+    },
+    "preLoad": false,
+    "presetId": "eb767a52-7e6c-4876-a571-7c83b503a8ff",
+    "presetType": "实体预设",
+    "previewEnable": true,
+    "renderAttrs": {
+        "SetNotRender": false
+    },
+    "singleton": false,
+    "stateAndItemAttrs": {
+        "AddEffect": [],
+        "SetItemInfo": []
+    },
+    "templateId": "minecraft:zombie",
+    "unique": false,
+    "updateRotationInterval": 0,
+    "updateScaleInterval": 0,
+    "updateTransformInterval": 2
+}

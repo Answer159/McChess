@@ -1,0 +1,13 @@
+{
+    "format_version": "1.10.0",
+    "minecraft:block": {
+        "description": {
+            "identifier": "McChess:McChess_block0"
+        },
+        "components": {
+            "minecraft:map_color": {
+                "color": "#408080"
+            }
+        }
+    }
+}

@@ -1,0 +1,21 @@
+{
+    "Addon": {
+        "EnchantSetting": {
+            "amplifier": 1
+        },
+        "PackResourceSortData": {
+            "1_wihzo:entity": {
+                "createTime": 1788940397.0835276,
+                "modifyTime": 1788943388.3925667
+            }
+        },
+        "PlayerEffectSetting": {
+            "amplifier": 1,
+            "duration": 10
+        },
+        "PresetInstanceTreeData": []
+    },
+    "UI": {
+        "customPrefabGroupExpand": []
+    }
+}

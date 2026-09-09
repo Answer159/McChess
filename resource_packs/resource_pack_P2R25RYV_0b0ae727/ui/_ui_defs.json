@@ -1,0 +1,10 @@
+{
+    "ui_defs": [
+        "ui/endLogicUI.json",
+        "ui/limitedRespawnUI.json",
+        "ui/skillUI.json",
+        "ui/startLogicUI.json",
+        "ui/teamUI.json",
+        "ui/netease_editor_template_namespace.json"
+    ]
+}

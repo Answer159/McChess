@@ -1,0 +1,135 @@
+{
+   "main@common.base_screen" : {
+      "anchor_from" : "center",
+      "anchor_to" : "center",
+      "controls" : [
+         {
+            "waitNotifyPanal" : {
+               "anchor_from" : "center",
+               "anchor_to" : "center",
+               "controls" : [
+                  {
+                     "waitNotifyLabel" : {
+                        "anchor_from" : "center",
+                        "anchor_to" : "center",
+                        "auto_expand" : false,
+                        "color" : [ 1, 1, 1 ],
+                        "controls" : [],
+                        "font_size" : "normal",
+                        "layer" : 1,
+                        "offset" : [ "0px", "10px" ],
+                        "shadow" : true,
+                        "size" : [ "100%+0 px", "100%+0px" ],
+                        "text" : "需6名玩家开始游戏（当前3名）",
+                        "text_alignment" : "center",
+                        "type" : "label",
+                        "visible" : true
+                     }
+                  }
+               ],
+               "layer" : 1,
+               "nineslice_size" : 0,
+               "offset" : [ "0px", "-20px" ],
+               "size" : [ "180px", "100px" ],
+               "texture" : "textures/startLogicUI/back",
+               "type" : "image",
+               "uv" : [ 0, 0 ],
+               "uv_size" : [ 36, 20 ],
+               "visible" : true
+            }
+         },
+         {
+            "startGameBtn@common.button" : {
+               "$default_color" : [ 0, 0, 0 ],
+               "$default_texture" : "textures/startLogicUI/off",
+               "$hover_texture" : "textures/startLogicUI/on",
+               "$labelText" : "开始游戏",
+               "$label_font_size" : "normal",
+               "$nine_slice_buttom" : 0,
+               "$nine_slice_left" : 0,
+               "$nine_slice_right" : 0,
+               "$nine_slice_top" : 0,
+               "$pressed_button_name" : "%startLogicUI.OnStartGameBtnClick",
+               "$text_offset" : [ 0, 0 ],
+               "anchor_from" : "center",
+               "anchor_to" : "center",
+               "controls" : [
+                  {
+                     "default" : {
+                        "is_new_nine_slice" : true,
+                        "layer" : 2,
+                        "nine_slice_buttom" : "$nine_slice_buttom",
+                        "nine_slice_left" : "$nine_slice_left",
+                        "nine_slice_right" : "$nine_slice_right",
+                        "nine_slice_top" : "$nine_slice_top",
+                        "texture" : "$default_texture",
+                        "type" : "image"
+                     }
+                  },
+                  {
+                     "hover" : {
+                        "is_new_nine_slice" : true,
+                        "layer" : 2,
+                        "nine_slice_buttom" : "$nine_slice_buttom",
+                        "nine_slice_left" : "$nine_slice_left",
+                        "nine_slice_right" : "$nine_slice_right",
+                        "nine_slice_top" : "$nine_slice_top",
+                        "texture" : "$hover_texture",
+                        "type" : "image"
+                     }
+                  },
+                  {
+                     "pressed" : {
+                        "is_new_nine_slice" : true,
+                        "layer" : 2,
+                        "nine_slice_buttom" : "$nine_slice_buttom",
+                        "nine_slice_left" : "$nine_slice_left",
+                        "nine_slice_right" : "$nine_slice_right",
+                        "nine_slice_top" : "$nine_slice_top",
+                        "texture" : "$hover_texture",
+                        "type" : "image"
+                     }
+                  },
+                  {
+                     "button_label" : {
+                        "color" : "$default_color",
+                        "font_size" : "large",
+                        "layer" : 3,
+                        "max_size" : [ "100%", "100%" ],
+                        "offset" : "$text_offset",
+                        "shadow" : false,
+                        "text" : "$labelText",
+                        "type" : "label"
+                     }
+                  }
+               ],
+               "layer" : 1,
+               "offset" : [ "0px", "0px" ],
+               "size" : [ "150px", "50px" ],
+               "visible" : true
+            }
+         },
+         {
+            "countDownLabel" : {
+               "anchor_from" : "center",
+               "anchor_to" : "center",
+               "auto_expand" : false,
+               "color" : [ 1, 1, 1 ],
+               "controls" : [],
+               "font_size" : "extra_large",
+               "layer" : 1,
+               "offset" : [ "0.00000%+0px", "-3.22222%+0px" ],
+               "shadow" : true,
+               "size" : [ "15.62500%+0px", "15.33333%+0px" ],
+               "text" : "5",
+               "text_alignment" : "center",
+               "type" : "label",
+               "visible" : true
+            }
+         }
+      ],
+      "offset" : [ "0.00000%+0px", "0%+0px" ],
+      "size" : [ "100%+0px", "100%+0px" ]
+   },
+   "namespace" : "startLogicUI"
+}
