@@ -12,7 +12,7 @@
         "dimension": 0, 
         "entityId": "-111669149695", 
         "isPreLoad": false, 
-        "loadPresetCfg": false, 
+        "loadPresetCfg": true, 
         "maxChunkPos": null, 
         "minChunkPos": null, 
         "name": "Zombie", 
