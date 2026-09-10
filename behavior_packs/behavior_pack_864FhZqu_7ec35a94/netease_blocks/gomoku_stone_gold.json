@@ -1,0 +1,32 @@
+{
+    "format_version": "1.10.0",
+    "minecraft:block": {
+        "description": {
+            "identifier": "wihzo:gomoku_stone_gold"
+        },
+        "components": {
+            "minecraft:map_color": {
+                "color": "#FFAA00"
+            },
+            "minecraft:destroy_time": {
+                "value": 100000
+            },
+            "minecraft:explosion_resistance": {
+                "value": 100000
+            },
+            "netease:aabb": {
+                "collision": {
+                    "min": [0, 0, 0],
+                    "max": [1, 1, 1]
+                },
+                "clip": {
+                    "min": [0, 0, 0],
+                    "max": [1, 1, 1]
+                }
+            },
+            "netease:custom_tips": {
+                "value": "金棋子（万能挡子，阻断双方连线）"
+            }
+        }
+    }
+}

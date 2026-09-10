@@ -1,0 +1,29 @@
+{
+    "resource_pack_name": "resource_pack_P2R25RYV_0b0ae727",
+    "texture_name": "atlas.terrain",
+    "padding": 8,
+    "num_mip_levels": 4,
+    "texture_data": {
+        "chess_base": {
+            "textures": "textures/blocks/chess_base"
+        },
+        "gomoku_stone_black": {
+            "textures": "textures/blocks/gomoku_stone_black"
+        },
+        "gomoku_stone_white": {
+            "textures": "textures/blocks/gomoku_stone_white"
+        },
+        "gomoku_stone_gold": {
+            "textures": "textures/blocks/gomoku_stone_gold"
+        },
+        "gomoku_ore_normal": {
+            "textures": "textures/blocks/gomoku_ore_normal"
+        },
+        "gomoku_ore_hardened": {
+            "textures": "textures/blocks/gomoku_ore_hardened"
+        },
+        "gomoku_ore_gold": {
+            "textures": "textures/blocks/gomoku_ore_gold"
+        }
+    }
+}

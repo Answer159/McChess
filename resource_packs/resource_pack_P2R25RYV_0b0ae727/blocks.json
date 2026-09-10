@@ -1,0 +1,30 @@
+{
+    "wihzo:McChess_ChessBase": {
+        "textures": "chess_base",
+        "sound": "stone"
+    },
+    "wihzo:gomoku_stone_black": {
+        "textures": "gomoku_stone_black",
+        "sound": "stone"
+    },
+    "wihzo:gomoku_stone_white": {
+        "textures": "gomoku_stone_white",
+        "sound": "stone"
+    },
+    "wihzo:gomoku_stone_gold": {
+        "textures": "gomoku_stone_gold",
+        "sound": "stone"
+    },
+    "wihzo:gomoku_ore_normal": {
+        "textures": "gomoku_ore_normal",
+        "sound": "stone"
+    },
+    "wihzo:gomoku_ore_hardened": {
+        "textures": "gomoku_ore_hardened",
+        "sound": "stone"
+    },
+    "wihzo:gomoku_ore_gold": {
+        "textures": "gomoku_ore_gold",
+        "sound": "stone"
+    }
+}

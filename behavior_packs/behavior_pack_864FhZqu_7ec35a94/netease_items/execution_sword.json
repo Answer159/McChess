@@ -1,0 +1,17 @@
+{
+    "format_version": "1.10",
+    "minecraft:item": {
+        "description": {
+            "identifier": "wihzo:execution_sword",
+            "register_to_create_menu": true,
+            "category": "Equipment"
+        },
+        "components": {
+            "minecraft:icon": "execution_sword",
+            "minecraft:max_stack_size": 1,
+            "minecraft:display_name": {
+                "value": "处决剑（攻击玩家一击必杀，用一次即碎）"
+            }
+        }
+    }
+}

@@ -1,0 +1,29 @@
+{
+    "format_version": "1.10.0",
+    "minecraft:block": {
+        "description": {
+            "identifier": "wihzo:gomoku_ore_hardened"
+        },
+        "components": {
+            "minecraft:map_color": {
+                "color": "#D8D8D8"
+            },
+            "minecraft:destroy_time": {
+                "value": 100
+            },
+            "netease:aabb": {
+                "collision": {
+                    "min": [0, 0, 0],
+                    "max": [1, 1, 1]
+                },
+                "clip": {
+                    "min": [0, 0, 0],
+                    "max": [1, 1, 1]
+                }
+            },
+            "netease:custom_tips": {
+                "value": "硬化棋子矿（手持铁镐右键采集）"
+            }
+        }
+    }
+}

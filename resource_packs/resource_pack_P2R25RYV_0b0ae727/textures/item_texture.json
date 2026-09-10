@@ -1,0 +1,24 @@
+{
+    "resource_pack_name": "resource_pack_P2R25RYV_0b0ae727",
+    "texture_name": "atlas.items",
+    "texture_data": {
+        "gomoku_pickaxe_stone": {
+            "textures": "textures/items/gomoku_pickaxe_stone"
+        },
+        "gomoku_pickaxe_iron": {
+            "textures": "textures/items/gomoku_pickaxe_iron"
+        },
+        "execution_sword": {
+            "textures": "textures/items/execution_sword"
+        },
+        "gomoku_piece_normal": {
+            "textures": "textures/items/gomoku_piece_normal"
+        },
+        "gomoku_piece_hardened": {
+            "textures": "textures/items/gomoku_piece_hardened"
+        },
+        "gomoku_piece_gold": {
+            "textures": "textures/items/gomoku_piece_gold"
+        }
+    }
+}

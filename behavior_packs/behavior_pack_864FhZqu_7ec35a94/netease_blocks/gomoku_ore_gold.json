@@ -1,0 +1,29 @@
+{
+    "format_version": "1.10.0",
+    "minecraft:block": {
+        "description": {
+            "identifier": "wihzo:gomoku_ore_gold"
+        },
+        "components": {
+            "minecraft:map_color": {
+                "color": "#FFAA00"
+            },
+            "minecraft:destroy_time": {
+                "value": 100
+            },
+            "netease:aabb": {
+                "collision": {
+                    "min": [0, 0, 0],
+                    "max": [1, 1, 1]
+                },
+                "clip": {
+                    "min": [0, 0, 0],
+                    "max": [1, 1, 1]
+                }
+            },
+            "netease:custom_tips": {
+                "value": "金棋子矿（徒手右键采集，刷新于远处守卫区）"
+            }
+        }
+    }
+}

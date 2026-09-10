@@ -1,0 +1,32 @@
+{
+    "format_version": "1.10.0",
+    "minecraft:block": {
+        "description": {
+            "identifier": "wihzo:gomoku_stone_white"
+        },
+        "components": {
+            "minecraft:map_color": {
+                "color": "#E8E8E8"
+            },
+            "minecraft:destroy_time": {
+                "value": 100000
+            },
+            "minecraft:explosion_resistance": {
+                "value": 100000
+            },
+            "netease:aabb": {
+                "collision": {
+                    "min": [0, 0, 0],
+                    "max": [1, 1, 1]
+                },
+                "clip": {
+                    "min": [0, 0, 0],
+                    "max": [1, 1, 1]
+                }
+            },
+            "netease:custom_tips": {
+                "value": "白方棋子（棋盘保护中，徒手不可破坏）"
+            }
+        }
+    }
+}
