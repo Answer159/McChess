@@ -41,6 +41,8 @@ class EndLogicServerSystem(ServerSystem):
 		self.playerKillNumList = {}
 		self.endGameFlag = False
 		self.victoryPlayerIdList = []
+		# 定时结算协程句柄（用于外部结算时作废未到点的定时器）
+		self.clockCoroutine = None
 		# 最终 boss 死亡统计
 		self.finalBossDieCount = 0
 		self.players = set()
@@ -251,11 +253,42 @@ class EndLogicServerSystem(ServerSystem):
 		# 如果结束判断条件是定时结束(防止外部调用时没有条件判断)
 		print('endLogicServerSystem.StartClock')
 		if self.victoryJudgeConditionKey[1] == self.endJudgeConditionList[0]:
-			CoroutineMgr.StartCoroutine(self.DelayStartClock())
+			# 上一轮遗留的定时协程先作废，避免双计时
+			self.CancelClock()
+			self.clockCoroutine = CoroutineMgr.StartCoroutine(self.DelayStartClock())
+
+	# 作废未到点的定时结算协程（外部结算提前结束时调用，避免超时结算二次触发）
+	def CancelClock(self):
+		if self.clockCoroutine is not None:
+			CoroutineMgr.StopCoroutine(self.clockCoroutine)
+			self.clockCoroutine = None
+
+	# 外部结算入口：玩法组件（如五子棋GomokuMod连珠获胜）达成胜利条件后直接系统调用，
+	# 与定时到时结算走同一套结束流程：作废定时器、通知胜利、按配置清背包、重启下一轮。
+	# victorName 播报用胜方名；victoryText 可传完整播报文案（缺省"§6xx§f获得胜利"）；
+	# victoryPlayerIdList 可选的获胜玩家列表（供GetVictoryPlayerList查询）
+	def ExternalSettleGame(self, victorName, victoryText=None, victoryPlayerIdList=None):
+		if self.endGameFlag:
+			return  # 本局已结算，防重复触发
+		self.CancelClock()
+		self.endGameFlag = True
+		self.victoryPlayerIdList = list(victoryPlayerIdList or [])
+		self.NotifyVictory(victorName, victoryText)
+		if self.clearInvFlag:
+			for playerId in self.playerKillNumList:
+				comp = self.CreateComponent(playerId, config.Minecraft, 'item')
+				for i in xrange(36):
+					comp.SetInvItemNum(i, 0)
+		# 自动开始下一轮（与定时结算一致，由restartGameFlag控制）
+		if self.restartGameFlag:
+			CoroutineMgr.StartCoroutine(self.ReStartGame())
 
 	# 定时器到时
 	def DelayStartClock(self):
 		yield -self.clockEndTime * 30
+		# 本局已被外部结算（如五子棋连珠）提前结束：超时结算作废
+		if self.endGameFlag:
+			return
 		# 开启倒计时则self.victoryJudgeConditionKey[1] == self.endJudgeConditionList[0]
 		victorName = ""
 		# 如果是个人+定时结束
@@ -330,10 +363,10 @@ class EndLogicServerSystem(ServerSystem):
 		if self.restartGameFlag:
 			CoroutineMgr.StartCoroutine(self.ReStartGame())
 
-	# 通知胜利信息
-	def NotifyVictory(self, victoryName):
+	# 通知胜利信息（victoryText可传完整播报文案，缺省"§6xx§f获得胜利"——平局等特殊文案走这）
+	def NotifyVictory(self, victoryName, victoryText=None):
 		logger.info("=================victoryName={0}============".format(victoryName))
-		text = "§6{0}§f获得胜利".format(victoryName)
+		text = victoryText if victoryText is not None else "§6{0}§f获得胜利".format(victoryName)
 		textInfo = self.CreateEventData()
 		textInfo["text"] = text
 		if self.startLogicServerSystem:
@@ -353,6 +386,8 @@ class EndLogicServerSystem(ServerSystem):
 	# 重新开始游戏
 	def ReStartGame(self):
 		yield -self.restartGameTime * 30
+		# 防御：重启时若还有遗留的定时协程一并作废
+		self.CancelClock()
 		self.endGameFlag = False
 		self.victoryPlayerIdList = []
 		self.ReSetDynamicData()

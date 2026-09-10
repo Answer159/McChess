@@ -2,14 +2,14 @@
     "format_version": "1.10.0",
     "minecraft:block": {
         "description": {
-            "identifier": "wihzo:gomoku_stone_white"
+            "identifier": "wihzo:gomoku_stone_black_hardened"
         },
         "components": {
             "minecraft:map_color": {
-                "color": "#E8E8E8"
+                "color": "#1A1A1A"
             },
             "minecraft:destroy_time": {
-                "value": 3
+                "value": 10
             },
             "minecraft:explosion_resistance": {
                 "value": 100000
@@ -25,7 +25,7 @@
                 }
             },
             "netease:custom_tips": {
-                "value": "白方棋子（挖掉即销毁，无掉落）"
+                "value": "黑方硬化棋子（更难挖，挖掉即销毁，无掉落）"
             }
         }
     }

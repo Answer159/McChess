@@ -3,22 +3,22 @@
     "texture_name": "atlas.items",
     "texture_data": {
         "gomoku_pickaxe_stone": {
-            "textures": "textures/items/gomoku_pickaxe_stone"
+            "textures": "textures/blocks/cobblestone"
         },
         "gomoku_pickaxe_iron": {
-            "textures": "textures/items/gomoku_pickaxe_iron"
+            "textures": "textures/blocks/iron_block"
         },
         "execution_sword": {
-            "textures": "textures/items/execution_sword"
+            "textures": "textures/blocks/netherite_block"
         },
         "gomoku_piece_normal": {
-            "textures": "textures/items/gomoku_piece_normal"
+            "textures": "textures/blocks/stone"
         },
         "gomoku_piece_hardened": {
-            "textures": "textures/items/gomoku_piece_hardened"
+            "textures": "textures/blocks/deepslate/deepslate"
         },
         "gomoku_piece_gold": {
-            "textures": "textures/items/gomoku_piece_gold"
+            "textures": "textures/blocks/raw_gold_block"
         }
     }
 }

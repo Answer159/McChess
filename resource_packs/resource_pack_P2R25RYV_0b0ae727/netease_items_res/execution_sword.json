@@ -1,0 +1,12 @@
+{
+    "format_version": "1.10",
+    "minecraft:item": {
+        "description": {
+            "identifier": "wihzo:execution_sword",
+            "category": "Equipment"
+        },
+        "components": {
+            "minecraft:icon": "execution_sword"
+        }
+    }
+}

@@ -74,6 +74,9 @@ for _, data in editorConfig.dataDict.items():
 	for key, value in data.items():
 		locals()[key] = value
 
+# 单人测试：最低开局人数改为1（编辑器组件里仍为2，以这里的手写覆盖为准）
+gameMinPlayerNum = 1
+
 
 startPoint = waitArea['startPoint']
 endPoint = waitArea['endPoint']

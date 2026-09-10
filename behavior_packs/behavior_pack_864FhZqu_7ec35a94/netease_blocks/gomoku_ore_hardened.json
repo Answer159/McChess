@@ -9,20 +9,40 @@
                 "color": "#D8D8D8"
             },
             "minecraft:destroy_time": {
-                "value": 100
+                "value": 5
             },
             "netease:aabb": {
                 "collision": {
-                    "min": [0, 0, 0],
-                    "max": [1, 1, 1]
+                    "min": [
+                        0,
+                        0,
+                        0
+                    ],
+                    "max": [
+                        1,
+                        1,
+                        1
+                    ]
                 },
                 "clip": {
-                    "min": [0, 0, 0],
-                    "max": [1, 1, 1]
+                    "min": [
+                        0,
+                        0,
+                        0
+                    ],
+                    "max": [
+                        1,
+                        1,
+                        1
+                    ]
                 }
             },
             "netease:custom_tips": {
-                "value": "硬化棋子矿（手持铁镐右键采集）"
+                "value": "硬化棋子矿（用铁镐左键挖掘采集）"
+            },
+            "netease:tier": {
+                "digger": "pickaxe",
+                "level": 2
             }
         }
     }

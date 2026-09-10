@@ -9,20 +9,36 @@
                 "color": "#FFAA00"
             },
             "minecraft:destroy_time": {
-                "value": 100
+                "value": 3
             },
             "netease:aabb": {
                 "collision": {
-                    "min": [0, 0, 0],
-                    "max": [1, 1, 1]
+                    "min": [
+                        0,
+                        0,
+                        0
+                    ],
+                    "max": [
+                        1,
+                        1,
+                        1
+                    ]
                 },
                 "clip": {
-                    "min": [0, 0, 0],
-                    "max": [1, 1, 1]
+                    "min": [
+                        0,
+                        0,
+                        0
+                    ],
+                    "max": [
+                        1,
+                        1,
+                        1
+                    ]
                 }
             },
             "netease:custom_tips": {
-                "value": "金棋子矿（徒手右键采集，刷新于远处守卫区）"
+                "value": "金棋子矿（徒手左键挖掘采集）"
             }
         }
     }

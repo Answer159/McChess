@@ -1,0 +1,20 @@
+{
+    "auxValue": 0,
+    "boxDataList": [],
+    "childParts": [],
+    "childPresets": [],
+    "classType": "BlockPreset",
+    "dimension": 0,
+    "engineTypeStr": "minecraft:dirt",
+    "forceLoad": false,
+    "name": "Anchor",
+    "notifyRemove": true,
+    "objId": "c250c90f260e4c0ea3a4159536290d64",
+    "placeBorn": true,
+    "preLoad": false,
+    "presetId": "2fc2d78f-fc6f-40c3-b99f-f40668b45292",
+    "presetType": "方块预设",
+    "previewEnable": true,
+    "singleton": false,
+    "unique": false
+}

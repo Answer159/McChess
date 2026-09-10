@@ -9,7 +9,7 @@
                 "color": "#1A1A1A"
             },
             "minecraft:destroy_time": {
-                "value": 100000
+                "value": 3
             },
             "minecraft:explosion_resistance": {
                 "value": 100000
@@ -25,7 +25,7 @@
                 }
             },
             "netease:custom_tips": {
-                "value": "黑方棋子（棋盘保护中，徒手不可破坏）"
+                "value": "黑方棋子（挖掉即销毁，无掉落）"
             }
         }
     }

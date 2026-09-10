@@ -34,3 +34,12 @@ for k, v in editorConfig.dataDict.items():
 	resourceList.append(v['item'])
 	resourceCountList.append(v['itemNumber'])
 	resourceIntervalList.append(v['interval'])
+
+# 五子棋玩法已用自身的资源环接管资源投放（script_Gomoku），
+# 这里清空模板自带的刷新点（铁锭/钻石/木棍），使其不再掉落。
+# 注：刷新点实例仍留在编辑器组件里，如需彻底清理请在MCStudio组件编辑器中删除。
+resourceStartPointList = []
+resourceEndPointList = []
+resourceList = []
+resourceCountList = []
+resourceIntervalList = []

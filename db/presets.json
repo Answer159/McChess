@@ -3,38 +3,44 @@
         "bornType": 0, 
         "changes": {
             "transform.pos": [
-                1849.179443359375, 
+                1854.0, 
                 62.0, 
-                570.4299926757812
+                565.0
             ]
         }, 
         "classType": "PresetInstance", 
         "dimension": 0, 
-        "entityId": "-111669149695", 
+        "entityId": null, 
         "isPreLoad": false, 
-        "loadPresetCfg": true, 
-        "maxChunkPos": null, 
-        "minChunkPos": null, 
-        "name": "Zombie", 
-        "objId": "6f301685fd764c019fd0aa3ee6284ed4", 
-        "presetId": "eb767a52-7e6c-4876-a571-7c83b503a8ff", 
-        "presetType": "EntityPreset", 
+        "loadPresetCfg": false, 
+        "maxChunkPos": [
+            115, 
+            35
+        ], 
+        "minChunkPos": [
+            115, 
+            35
+        ], 
+        "name": "Anchor", 
+        "objId": "2d9adaa13ef9455c97dd96f0b126cdd8", 
+        "presetId": "2fc2d78f-fc6f-40c3-b99f-f40668b45292", 
+        "presetType": "BlockPreset", 
         "transform": {
             "classType": "Transform", 
             "pos": [
-                1849.179443359375, 
+                1854.0, 
                 62.0, 
-                570.4299926757812
+                565.0
             ], 
             "rotation": [
-                0.0, 
+                0, 
                 0, 
                 0
             ], 
             "scale": [
-                1.0, 
-                1.0, 
-                1.0
+                1, 
+                1, 
+                1
             ]
         }, 
         "virtual": true

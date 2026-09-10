@@ -5,7 +5,7 @@
   "Versions": [],
   "JavaType": 7,
   "Name": "对战玩法模板",
-  "UpdateTime": "2026-09-10T10:47:09.1777386+08:00",
+  "UpdateTime": "2026-09-10T19:36:24.2315483+08:00",
   "IconName": null,
   "Md5": null,
   "CloudMd5": null,
@@ -55,7 +55,7 @@
   "TestRenderEngine": 0,
   "SelectComponents": [
     "fc5b5e89df8a4e20b94b7fca4789a17d",
-    "08c08629b45a4d11b3488edd9edcae90"
+    "82be941c76944745b821e822009a8dc6"
   ],
   "isSlim": false,
   "UseLegacyEditor": null,
