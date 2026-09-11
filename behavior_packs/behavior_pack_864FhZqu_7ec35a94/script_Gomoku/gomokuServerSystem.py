@@ -33,6 +33,8 @@ class GomokuServerSystem(ServerSystem):
 	1. 手持棋子物品右键棋盘基座 -> 落子（颜色=落子方队伍，消耗棋子）
 	2. 左键挖棋子矿 -> 采集（需对应镐，走ServerPlayerTryDestroyBlockEvent；镐耐久1采一次即碎；金矿徒手可挖）
 	3. 手持处决剑攻击玩家 -> 一击必杀（剑用一次即碎）
+	4. 背包规则：新一局开始清空全体背包；棋子携带上限MaxCarriedPieces个（道具不限），
+	   超限时拦截拾取（ServerPlayerTryTouchEvent）并取消挖矿（矿留原地、镐不消耗）
 
 	棋盘位置：以编辑器里放置的Anchor方块预设为中心（启动时读 db/presets.json 解析坐标），
 	基座 /fill 会覆盖掉Anchor方块本身；资源环（矿/镐/剑）以该中心为圆心按config.SpawnConfigList
@@ -57,6 +59,8 @@ class GomokuServerSystem(ServerSystem):
 		self.oreCountDict = {}
 		self.itemExpireDict = {}
 		self.recountCoroutine = None
+		# 节流播报的上次播报时刻（按(玩家,类型)键，防刷屏）
+		self.announceThrottleTime = {}
 		self.loggedBlockUseEvent = False
 		self.loggedItemUseOnEvent = False
 		self.loggedCarriedItem = False
@@ -76,6 +80,8 @@ class GomokuServerSystem(ServerSystem):
 			config.ServerPlayerTryDestroyBlockEvent, self, self.OnPlayerTryDestroyBlock)
 		self.ListenForEvent(serverApi.GetEngineNamespace(), serverApi.GetEngineSystemName(),
 			config.PlayerAttackEntityEvent, self, self.OnPlayerAttack)
+		self.ListenForEvent(serverApi.GetEngineNamespace(), serverApi.GetEngineSystemName(),
+			config.ServerPlayerTryTouchEvent, self, self.OnPlayerTryTouch)
 		self.ListenForEvent(config.StartLogicModName, config.StartLogicServerSystemName,
 			config.StartLogicEvent, self, self.OnRoundStart)
 
@@ -93,6 +99,8 @@ class GomokuServerSystem(ServerSystem):
 			config.ServerPlayerTryDestroyBlockEvent, self, self.OnPlayerTryDestroyBlock)
 		self.UnListenForEvent(serverApi.GetEngineNamespace(), serverApi.GetEngineSystemName(),
 			config.PlayerAttackEntityEvent, self, self.OnPlayerAttack)
+		self.UnListenForEvent(serverApi.GetEngineNamespace(), serverApi.GetEngineSystemName(),
+			config.ServerPlayerTryTouchEvent, self, self.OnPlayerTryTouch)
 		self.UnListenForEvent(config.StartLogicModName, config.StartLogicServerSystemName,
 			config.StartLogicEvent, self, self.OnRoundStart)
 
@@ -117,6 +125,11 @@ class GomokuServerSystem(ServerSystem):
 	def OnRoundStart(self, args):
 		"""新一轮开始：确保棋盘已铺（等待期失败在此重试），清盘并启动资源刷新"""
 		logger.info("[Gomoku] 新一轮开始，重置棋盘")
+		# 清空上一局玩家的背包（棋子/道具不留到下一局；keepInventory存档下尤其必要）
+		if config.ClearInventoryOnRoundStart:
+			self.RunCommand('/clear @a')
+			self.Announce("§e新对局开始，已清空背包")
+		self.announceThrottleTime = {}
 		if not self.boardBuilt:
 			self.BuildBoard()
 		if self.boardBuilt:
@@ -302,6 +315,22 @@ class GomokuServerSystem(ServerSystem):
 		expires = [t for t in self.itemExpireDict.get(itemName, []) if t > now]
 		self.itemExpireDict[itemName] = expires
 		return len(expires)
+
+	def OnPlayerTryTouch(self, args):
+		"""玩家即将捡起掉落物（ServerPlayerTryTouchEvent）：棋子携带已满则取消拾取，
+		物品留在地上等别人来捡；镐/剑等道具不限制。取消后设置拾取cd，
+		防止玩家站在物品上时每帧重触发本事件"""
+		itemDict = args.get('itemDict') or {}
+		if self.GetItemName(itemDict) not in config.PieceItemNameSet:
+			return
+		playerId = args.get('playerId')
+		if not playerId:
+			return
+		if self.CountCarriedPieces(playerId) + itemDict.get('count', 1) > config.MaxCarriedPieces:
+			args['cancel'] = True
+			args['pickupDelay'] = config.FullPickupDelayFrames
+			self.AnnounceThrottled(playerId, 'pieceCap',
+				"§c棋子携带已达上限{}个，先落子或用掉再拾取".format(config.MaxCarriedPieces))
 
 	def IterRingColumns(self, cx, cz, inner, outer, angleMin, angleMax):
 		"""枚举环形区域内的整数(x,z)列（角度约定与SpawnAtRing一致：0=北/+Z，顺时针）"""
@@ -598,14 +627,23 @@ class GomokuServerSystem(ServerSystem):
 
 	def OnPlayerTryDestroyBlock(self, args):
 		"""左键挖掘入口（挖穿前触发）：矿->采集（普通/硬化矿需对应镐，金矿徒手可挖）；
-		棋盘棋石->挖掉即销毁并释放引擎格子（普通3秒/硬化10秒由方块destroy_time控制）。
-		工具校验采用原版语义——工具不对照样允许挖穿（不打断长按连续挖掘），只是拿不到棋子；
-		挖穿后矿不产生原版掉落，棋子由脚本发到背包；镐耐久1，采一次即碎。
-		事件字段对照官方模板：fullName/x/y/z/playerId/cancel/spawnResources"""
+		棋盘棋石->挖掉即销毁并释放引擎格子（普通3秒/硬化10秒由方块destroy_time控制）；
+		棋盘基座->一律取消挖掘（不依赖destroy_time硬扛，脚本层直接cancel；
+		将来实现特殊道具时在此按手持道具放行）。棋子携带已满（MaxCarriedPieces）时
+		取消挖掘，矿保留原地、镐不消耗。工具校验采用原版语义——工具不对照样允许挖穿
+		（不打断长按连续挖掘），只是拿不到棋子；挖穿后矿不产生原版掉落，棋子由脚本发到
+		背包；镐耐久1，采一次即碎。事件字段对照官方模板：fullName/x/y/z/playerId/cancel/spawnResources"""
 		if not self.loggedTryDestroyEvent:
 			logger.info("[Gomoku] ServerPlayerTryDestroyBlockEvent raw: {}".format(args))
 			self.loggedTryDestroyEvent = True
 		blockName = args.get('fullName', '')
+		if blockName == config.ChessBaseBlockName:
+			# 基座不可破坏：脚本直接取消（与棋子上限拦截同款机制，不靠destroy_time限制）
+			args['cancel'] = True
+			playerId = args.get('playerId')
+			if playerId:
+				self.AnnounceThrottled(playerId, 'baseBreak', "§c棋盘基座无法被破坏")
+			return
 		if blockName not in config.OrePieceItemDict:
 			if blockName in config.StoneBlockNameSet:
 				self.HandleStoneBreak(args)
@@ -614,9 +652,15 @@ class GomokuServerSystem(ServerSystem):
 				args['spawnResources'] = False
 				self.Announce("§e一枚雷管被及时拆除了")
 			return
+		playerId = args.get('playerId')
+		if playerId and self.CountCarriedPieces(playerId) >= config.MaxCarriedPieces:
+			# 棋子携带已满：取消挖掘（矿留在原地、镐不消耗、存量计数不动）
+			args['cancel'] = True
+			self.AnnounceThrottled(playerId, 'pieceCap',
+				"§c棋子携带已达上限{}个，先落子或用掉再采集".format(config.MaxCarriedPieces))
+			return
 		# 矿被挖碎（无论工具对错，方块都会消失）：存量计数-1
 		self.oreCountDict[blockName] = self.oreCountDict.get(blockName, 0) - 1
-		playerId = args.get('playerId')
 		if not playerId:
 			return
 		# 反查该矿要求的镐（金矿无要求，徒手可挖）
@@ -674,7 +718,9 @@ class GomokuServerSystem(ServerSystem):
 	# ---------- 交互：武器 ----------
 
 	def OnPlayerAttack(self, args):
-		"""手持武器（道具表type=weapon）攻击玩家 -> 按表内伤害加成，一次性武器随之销毁"""
+		"""手持武器（道具表type=weapon）攻击玩家 -> 按表内伤害加成，一次性武器随之销毁。
+		damage须与isValid成对设置才生效（对照官方PVP模板script_Team的队友免伤写法，
+		只设damage引擎会忽略脚本伤害值）"""
 		attackerId = args.get('playerId')
 		victimId = args.get('victimId')
 		if not attackerId or not victimId:
@@ -682,10 +728,16 @@ class GomokuServerSystem(ServerSystem):
 		engineTypeComp = serverApi.CreateComponent(victimId, config.Minecraft, config.EngineTypeComponent)
 		if not engineTypeComp or engineTypeComp.GetEngineTypeStr() != 'minecraft:player':
 			return
+		# 同队免伤（与TeamMod友伤抑制一致；本系统先于/后于TeamMod触发结果都一样：
+		# 这里不设9999就不会覆盖TeamMod写下的damage=0，剑也不消耗）
+		attackerSide = self.GetPlayerSide(attackerId)
+		if attackerSide is not None and attackerSide == self.GetPlayerSide(victimId):
+			return
 		itemCfg = config.ItemTable.get(self.GetCarriedItemName(attackerId))
 		if not itemCfg or itemCfg['type'] != 'weapon':
 			return
 		args['damage'] = itemCfg.get('damage', config.DefaultWeaponDamage)
+		args['isValid'] = 1
 		if itemCfg.get('consumable') and self.ConsumeCarriedItem(attackerId):
 			self.Announce("§c{}出鞘！一击必杀！".format(itemCfg['name']))
 
@@ -756,11 +808,39 @@ class GomokuServerSystem(ServerSystem):
 				logger.info("[Gomoku] 手持物品raw: {}".format(carriedItem))
 				self.loggedCarriedItem = True
 			if carriedItem:
-				return carriedItem.get('newItemName') or carriedItem.get('itemName') or carriedItem.get('name', '')
+				return self.GetItemName(carriedItem)
 			return ''
 		except Exception as e:
 			logger.warning("[Gomoku] GetCarriedItemName 失败: {}".format(e))
 			return None
+
+	def GetItemName(self, itemDict):
+		"""从物品信息字典取物品名（官方模板用newItemName，老版本itemName，再兜底name）"""
+		return itemDict.get('newItemName') or itemDict.get('itemName') or itemDict.get('name', '')
+
+	def CountCarriedPieces(self, playerId):
+		"""统计玩家携带的棋子总数（普通/硬化/金合计）。对照官方TaskChain模板：
+		INVENTORY+OFFHAND遍历（INVENTORY已含手持位，不重复计CARRIED），空槽为falsy跳过。
+		API异常返回-1表示未知，调用方按不拦截处理（宽松放行，与跨Mod查询的降级风格一致）"""
+		try:
+			itemComp = serverApi.CreateComponent(playerId, config.Minecraft, config.ItemComponent)
+			posType = serverApi.GetMinecraftEnum().ItemPosType
+			playerItems = (itemComp.GetPlayerAllItems(posType.INVENTORY) or []) \
+				+ (itemComp.GetPlayerAllItems(posType.OFFHAND) or [])
+			return sum(item.get('count', 1) for item in playerItems
+				if item and self.GetItemName(item) in config.PieceItemNameSet)
+		except Exception as e:
+			logger.warning("[Gomoku] CountCarriedPieces 失败: {}".format(e))
+			return -1
+
+	def AnnounceThrottled(self, playerId, kind, text):
+		"""按(玩家,类型)节流的播报：事件连续触发（站在物品上反复拾取/长按挖基座）也不刷屏"""
+		key = (playerId, kind)
+		now = time.time()
+		if now - self.announceThrottleTime.get(key, 0) < config.ThrottledAnnounceCooldown:
+			return
+		self.announceThrottleTime[key] = now
+		self.Announce(text)
 
 	def ConsumeCarriedItem(self, playerId):
 		"""销毁手持物品（镐/剑耐久1、棋子落子/墨水/雷管消耗均走这里）：count-1后写回手持位。
@@ -771,7 +851,7 @@ class GomokuServerSystem(ServerSystem):
 			carriedItem = itemComp.GetPlayerItem(serverApi.GetMinecraftEnum().ItemPosType.CARRIED, 0)
 			if not carriedItem:
 				return False
-			itemName = carriedItem.get('newItemName') or carriedItem.get('itemName') or ''
+			itemName = self.GetItemName(carriedItem)
 			carriedItem['count'] = carriedItem.get('count', 1) - 1
 			if itemComp.SpawnItemToPlayerCarried(carriedItem, playerId):
 				self.OnItemConsumed(itemName)

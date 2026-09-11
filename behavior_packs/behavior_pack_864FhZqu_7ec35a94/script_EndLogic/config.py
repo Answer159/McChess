@@ -66,7 +66,9 @@ victoryJudgeConditionList = {
 # 可配置参数
 victoryJudgeConditionKey = ["player", "clockEndCondition"]
 victoryJudgeConditionValue = "deathNumMin"
-clockEndTime = 10
+# 定时结算时长（单位秒，代码按 *30帧=1秒 换算）：到点一律平局结算。
+# 本图结算只有两种：超时平局 / 五子棋连珠获胜（见endLogicServerSystem.ExternalSettleGame）
+clockEndTime = 600
 showEndNotifyUIFlag = True
 restartGameTime = 5
 restartGameFlag = False

@@ -14,7 +14,7 @@ version = [
 dataDict = {
 	'7a1af79b-03ed-4762-9f2e-b6d0c6dbea39': {
 		'clearInvFlag': False,
-		'clockEndTime': 120,
+		'clockEndTime': 600,
 		'endConditionType': 'team',
 		'endJudgeCondition': 'clockEndCondition',
 		'endWaitPos': [

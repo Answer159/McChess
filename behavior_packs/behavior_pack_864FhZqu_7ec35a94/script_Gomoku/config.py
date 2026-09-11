@@ -29,6 +29,10 @@ ServerBlockUseEvent = "ServerBlockUseEvent"
 ServerItemUseOnEvent = "ServerItemUseOnEvent"
 ServerPlayerTryDestroyBlockEvent = "ServerPlayerTryDestroyBlockEvent"
 PlayerAttackEntityEvent = "PlayerAttackEntityEvent"
+# 玩家即将捡起掉落物事件——棋子携带超上限时cancel拦截
+# （EntityRemoveEvent已弃用：SpawnItemToLevel拿不到entityId，物品计数改为
+#   自维护itemExpireDict模型，不再依赖掉落物实体移除事件）
+ServerPlayerTryTouchEvent = "ServerPlayerTryTouchEvent"
 ScriptTickServerEvent = "OnScriptTickServer"
 #  Custom（服务端广播给所有客户端，供后续五子棋UI监听）
 GomokuGameResultEvent = "GomokuGameResultEvent"
@@ -167,6 +171,20 @@ DefaultWeaponDamage = 9999
 PickaxeOreDict = {item: cfg["mineOre"] for item, cfg in ItemTable.iteritems() if cfg["type"] == "pickaxe"}
 # 矿 -> 采到的棋子物品
 OrePieceItemDict = {cfg["fromOre"]: item for item, cfg in ItemTable.iteritems() if "fromOre" in cfg}
+# 全部棋子物品名集合（背包携带上限的计数范围）
+PieceItemNameSet = {item for item, cfg in ItemTable.iteritems() if cfg["type"] == "piece"}
+
+# ---------------------- 背包规则 ----------------------
+# 新一局开始时清空全体玩家背包（上一局残留的棋子/道具不留到下一局；存档开着
+# keepInventory时上一局的物品会跟人进下一局，这里统一回收）
+ClearInventoryOnRoundStart = True
+# 玩家携带棋子上限（普通/硬化/金棋子合计；镐/剑等道具不限制）。
+# 超限时：捡拾掉落物被拦截（物品留在地上），挖矿被取消（矿留原地、镐不消耗）
+MaxCarriedPieces = 2
+# 拦截拾取后该掉落物的拾取cd（帧，30帧=1秒；防止玩家站在物品上时每帧重触发事件）
+FullPickupDelayFrames = 30
+# 节流播报的按(玩家,类型)冷却（秒，防连续触发刷屏；棋子上限/基座防挖提示共用）
+ThrottledAnnounceCooldown = 5
 
 # ---------------------- 队伍阵营映射 ----------------------
 # 队伍名 -> 阵营（★须与Team组件编辑器里配置的队伍名一致，改队伍名=这里同步改）
