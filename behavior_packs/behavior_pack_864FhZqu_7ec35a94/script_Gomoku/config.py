@@ -28,6 +28,10 @@ NameComponent = "name"
 AddServerPlayerEvent = "AddServerPlayerEvent"
 ServerBlockUseEvent = "ServerBlockUseEvent"
 ServerItemUseOnEvent = "ServerItemUseOnEvent"
+# 玩家点击右键尝试使用物品（不依赖方块目标——对空气右键也触发，物品名取
+# itemDict['newItemName']，对照官方GodChef模板用法）。换位符走这里：
+# 指着方块右键时ServerItemUseOnEvent先到，对空气右键只有本事件会触发
+ServerItemTryUseEvent = "ServerItemTryUseEvent"
 ServerPlayerTryDestroyBlockEvent = "ServerPlayerTryDestroyBlockEvent"
 PlayerAttackEntityEvent = "PlayerAttackEntityEvent"
 # 玩家即将捡起掉落物事件——棋子携带超上限时cancel拦截

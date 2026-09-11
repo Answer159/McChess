@@ -77,6 +77,10 @@ class GomokuServerSystem(ServerSystem):
 		self.trapCells = set()
 		# 节流播报的上次播报时刻（按(玩家,类型)键，防刷屏）
 		self.announceThrottleTime = {}
+		# 换位符去重：playerId -> 上次触发时刻（time.time()秒）。换位符有两条入口
+		# （指方块右键走ServerItemUseOnEvent、对空气右键走ServerItemTryUseEvent），
+		# 同一次点击两个事件可能都到——1秒内只生效一次
+		self.swapTriggerTime = {}
 		# 阵亡冷却：playerId -> 解禁时刻（time.time()秒）。WorldMod的immediate_respawn规则
 		# 使阵亡者不弹原版死亡界面、自动在队伍复活点（棋盘附近）重生；这里封锁其行动到解禁
 		# （时长=config.DeathRespawnHoldSeconds，倒计时见RespawnCountdown）
@@ -98,6 +102,8 @@ class GomokuServerSystem(ServerSystem):
 			config.ServerBlockUseEvent, self, self.OnBlockUse)
 		self.ListenForEvent(serverApi.GetEngineNamespace(), serverApi.GetEngineSystemName(),
 			config.ServerItemUseOnEvent, self, self.OnItemUseOn)
+		self.ListenForEvent(serverApi.GetEngineNamespace(), serverApi.GetEngineSystemName(),
+			config.ServerItemTryUseEvent, self, self.OnItemTryUse)
 		self.ListenForEvent(serverApi.GetEngineNamespace(), serverApi.GetEngineSystemName(),
 			config.ServerPlayerTryDestroyBlockEvent, self, self.OnPlayerTryDestroyBlock)
 		self.ListenForEvent(serverApi.GetEngineNamespace(), serverApi.GetEngineSystemName(),
@@ -125,6 +131,8 @@ class GomokuServerSystem(ServerSystem):
 			config.ServerBlockUseEvent, self, self.OnBlockUse)
 		self.UnListenForEvent(serverApi.GetEngineNamespace(), serverApi.GetEngineSystemName(),
 			config.ServerItemUseOnEvent, self, self.OnItemUseOn)
+		self.UnListenForEvent(serverApi.GetEngineNamespace(), serverApi.GetEngineSystemName(),
+			config.ServerItemTryUseEvent, self, self.OnItemTryUse)
 		self.UnListenForEvent(serverApi.GetEngineNamespace(), serverApi.GetEngineSystemName(),
 			config.ServerPlayerTryDestroyBlockEvent, self, self.OnPlayerTryDestroyBlock)
 		self.UnListenForEvent(serverApi.GetEngineNamespace(), serverApi.GetEngineSystemName(),
@@ -624,7 +632,8 @@ class GomokuServerSystem(ServerSystem):
 			self.HandleBoardPickUse(playerId, pos)
 			return
 		if itemType == 'swap':
-			# 手持换位符右键任意方块 -> 与最近敌方玩家互换位置（见HandleSwapUse）
+			# 手持换位符右键方块 -> 与最近敌方玩家互换位置（对空气右键走OnItemTryUse，
+			# 两条入口同一去处，去重见HandleSwapUse）
 			self.HandleSwapUse(playerId)
 			return
 		if itemType == 'board':
@@ -637,6 +646,23 @@ class GomokuServerSystem(ServerSystem):
 		if not self.IsPlayableCell(pos):
 			return
 		self.HandlePlace(playerId, pos)
+
+	def OnItemTryUse(self, args):
+		"""右键尝试使用物品的入口（ServerItemTryUseEvent，字段对照官方GodChef模板：
+		playerId/itemDict/cancel，物品名取itemDict['newItemName']）。本事件不依赖
+		方块目标——对空气右键也触发，专门接住换位符（其余物品须要方块坐标的
+		交互都走OnItemUseOn，这里不做通用分派，也不cancel）"""
+		playerId = args.get('playerId')
+		itemName = (args.get('itemDict') or {}).get('newItemName')
+		if not playerId or not itemName:
+			logger.warning("[Gomoku] 物品尝试使用事件字段异常: {}".format(args))
+			return
+		if itemName != config.SwapItemName:
+			return  # 其他物品的右键不在本事件处理（避免与OnItemUseOn双触发）
+		if self.IsRespawnHeld(playerId):
+			self.TellRespawnHeld(playerId)
+			return
+		self.HandleSwapUse(playerId)
 
 	def HandlePlace(self, playerId, pos):
 		"""手持棋子物品右键棋盘基座（主盘或扩展格）-> 落子（占用/终局校验与
@@ -922,10 +948,17 @@ class GomokuServerSystem(ServerSystem):
 		logger.info("[Gomoku] 破盘镐拆格: {} ({})".format(pos, playerId))
 
 	def HandleSwapUse(self, playerId):
-		"""换位符：与最近的敌方玩家互换位置（右键任意方块触发，位置无关）。
+		"""换位符：与最近的敌方玩家互换位置。触发=手持时右键（单击即可）：
+		准星指着方块走ServerItemUseOnEvent、对空气右键走ServerItemTryUseEvent，
+		两条入口都到这里，swapTriggerTime去重（同一次点击可能两个事件都到）。
 		目标=距离最近的不同阵营玩家（TeamMod缺失/本方无阵营时退化为任意其他玩家）；
 		双方坐标先一起读、再一起写，任一侧传送失败则回滚，失败不消耗道具。
 		SetPos行为与/tp一致（官方文档），双方都传送成功才用掉换位符"""
+		now = time.time()
+		if now - self.swapTriggerTime.get(playerId, 0) < 1.0:
+			return  # 1秒内已触发过（UseOn与TryUse双事件去重，也防连点）
+		self.swapTriggerTime[playerId] = now
+		logger.info("[Gomoku] 换位符右键: {} 手持={}".format(playerId, self.GetCarriedItemName(playerId)))
 		posCompFactory = serverApi.GetEngineCompFactory()
 		myPosComp = posCompFactory.CreatePos(playerId)
 		if not myPosComp:

@@ -9,7 +9,7 @@
         "components": {
             "minecraft:max_stack_size": 1,
             "netease:customtips": {
-                "value": "右键任意方块，与最近的敌方玩家互换位置（无范围限制）；用一次即碎"
+                "value": "右键（对空气也可以）与最近的敌方玩家互换位置，无范围限制；用一次即碎"
             }
         }
     }
