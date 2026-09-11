@@ -5,25 +5,31 @@
     "num_mip_levels": 4,
     "texture_data": {
         "chess_base": {
-            "textures": "textures/blocks/brick"
+            "textures": "textures/blocks/chess_base"
         },
         "gomoku_stone_black": {
-            "textures": "textures/blocks/obsidian"
+            "textures": "textures/blocks/fragile_black_chess"
         },
         "gomoku_stone_white": {
-            "textures": "textures/blocks/snow"
+            "textures": "textures/blocks/fragile_white_chess"
+        },
+        "gomoku_stone_black_hardened": {
+            "textures": "textures/blocks/hard_black_chess"
+        },
+        "gomoku_stone_white_hardened": {
+            "textures": "textures/blocks/hard_white_chess"
         },
         "gomoku_stone_gold": {
             "textures": "textures/blocks/gold_block"
         },
         "gomoku_ore_normal": {
-            "textures": "textures/blocks/coal_ore"
+            "textures": "textures/blocks/fragile_chess"
         },
         "gomoku_ore_hardened": {
-            "textures": "textures/blocks/iron_ore"
+            "textures": "textures/blocks/hard_chess"
         },
         "gomoku_ore_gold": {
-            "textures": "textures/blocks/gold_ore"
+            "textures": "textures/blocks/golden_chess"
         }
     }
 }

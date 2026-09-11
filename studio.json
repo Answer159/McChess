@@ -9,7 +9,7 @@
   "UserName": "wzh0506",
   "UserId": "245481",
   "Id": "fc5b5e89df8a4e20b94b7fca4789a17d",
-  "EditType": 1,
+  "EditType": 4,
   "IsMap": true,
   "CreateNew": false,
   "CodeEnable": false,
@@ -46,6 +46,6 @@
   "StudioTempPath": "D:\\MCStudioDownload\\temp\\editorTemp",
   "EditorResourcePackPath": "D:\\ProgramFiles\\MCStudio\\data\\inner_res",
   "EditDate": 1788939363,
-  "EditDuration": 96117,
+  "EditDuration": 112321,
   "TestDuration": 158
 }

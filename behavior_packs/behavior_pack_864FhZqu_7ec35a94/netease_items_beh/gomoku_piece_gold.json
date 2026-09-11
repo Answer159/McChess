@@ -8,8 +8,8 @@
         },
         "components": {
             "minecraft:max_stack_size": 1,
-            "minecraft:display_name": {
-                "value": "金棋子（万能挡子，阻断双方连线）"
+            "netease:customtips": {
+                "value": "万能挡子：不分颜色、任何队伍均可落子，可阻断双方连线，但不会作为获胜连珠"
             }
         }
     }

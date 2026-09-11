@@ -47,10 +47,11 @@ TeamModName = "TeamMod"
 TeamServerSystemName = "TeamServerSystem"
 
 # ---------------------- 棋盘 ----------------------
-# 棋盘中心 = 编辑器里放置的Anchor方块预设的位置（启动时从地图 db/presets.json 读取）
-AnchorPresetName = "Anchor"
-# presets.json 读取失败时的兜底棋盘中心（★即当前Anchor所在坐标，编辑器里移动Anchor后同步更新）
-FallbackBoardCenter = (1854, 62, 565)
+# 棋盘中心（唯一事实来源）。编辑器里移动棋盘后，把Anchor新坐标同步到这里即可。
+# 注意：不能在运行时读 db/presets.json 取Anchor坐标——游戏加载世界后引擎会把
+# virtual预设消耗掉（落成方块后清空该文件），脚本读到的永远是空列表（已实测）；
+# ModSDK也没有查询预设坐标的API，Anchor方块本体又是普通泥土无法扫描识别。
+BoardCenter = (1871, 62, 556)
 # 棋盘边长（格数），实际铺设为 BoardSize x BoardSize 的基座方阵，基座层会覆盖掉Anchor方块
 # ★须为奇数（棋盘才有正中心）；改动后资源环最小内半径须 > BoardSize/2，否则物品会掉在棋盘上
 BoardSize = 9
@@ -80,8 +81,8 @@ TickingAreaRadius = 4
 # ---------------------- 自定义方块（名字须与netease_blocks/下JSON一致） ----------------------
 # 棋盘基座
 ChessBaseBlockName = "wihzo:McChess_ChessBase"
-# 已落子的棋石（颜色=落子方队伍；普通/硬化外观相同、挖掘耗时不同，硬化版destroy_time更大；
-# 挖掉即销毁无掉落，并释放引擎对应格子）
+# 已落子的棋石（颜色=落子方队伍；普通/硬化各有独立贴图——硬化版带金属包边+铆钉标记，
+# 且硬化版destroy_time更大；挖掉即销毁无掉落，并释放引擎对应格子）
 StoneBlackName = "wihzo:gomoku_stone_black"
 StoneWhiteName = "wihzo:gomoku_stone_white"
 StoneBlackHardenedName = "wihzo:gomoku_stone_black_hardened"
@@ -117,7 +118,7 @@ ItemTable = {
 	},
 	PieceItemHardened: {
 		"name": "硬化棋子", "type": "piece",
-		"hardened": True,  # 落子后用硬化棋石（外观同色，挖掘耗时更长）
+		"hardened": True,  # 落子后用硬化棋石（同色系独立贴图，挖掘耗时更长）
 		"fromOre": "wihzo:gomoku_ore_hardened",
 	},
 	PieceItemGold: {
