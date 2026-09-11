@@ -8,8 +8,8 @@
         },
         "components": {
             "minecraft:max_stack_size": 1,
-            "minecraft:display_name": {
-                "value": "普通棋子"
+            "netease:customtips": {
+                "value": "手持右键棋盘基座落子，占用一格；落子颜色=落子方队伍"
             }
         }
     }

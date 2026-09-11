@@ -1,7 +1,5 @@
 # -*- coding: utf-8 -*-
-import json
 import math
-import os
 import random
 import time
 
@@ -36,7 +34,7 @@ class GomokuServerSystem(ServerSystem):
 	4. 背包规则：新一局开始清空全体背包；棋子携带上限MaxCarriedPieces个（道具不限），
 	   超限时拦截拾取（ServerPlayerTryTouchEvent）并取消挖矿（矿留原地、镐不消耗）
 
-	棋盘位置：以编辑器里放置的Anchor方块预设为中心（启动时读 db/presets.json 解析坐标），
+	棋盘位置：以 config.BoardCenter 为中心（唯一事实来源，编辑器里移动棋盘=改这个常量），
 	基座 /fill 会覆盖掉Anchor方块本身；资源环（矿/镐/剑）以该中心为圆心按config.SpawnConfigList
 	刷新，高度与棋子同一水平面。
 	"""
@@ -46,7 +44,7 @@ class GomokuServerSystem(ServerSystem):
 		self.levelId = serverApi.GetLevelId()
 		# 乱斗模式不强制轮流落子，黑白双方均可随时落子
 		self.board = GomokuBoard(config.BoardSize, config.BoardSize, enforce_turn=False)
-		# 棋盘中心（Anchor预设坐标），首次使用时解析
+		# 棋盘中心（config.BoardCenter），首次使用时从config取
 		self.boardCenter = None
 		self.boardBuilt = False
 		self.spawnCoroutines = []
@@ -141,41 +139,11 @@ class GomokuServerSystem(ServerSystem):
 
 	# ---------- 棋盘定位与铺设 ----------
 
-	def FindAnchorPos(self):
-		"""读取地图 db/presets.json，返回Anchor方块预设的坐标；读不到返回None"""
-		candidates = []
-		try:
-			scriptDir = os.path.dirname(os.path.abspath(__file__))
-			# script_Gomoku -> 行为包 -> behavior_packs -> 地图根目录
-			candidates.append(os.path.join(scriptDir, os.path.pardir, os.path.pardir, os.path.pardir, 'db', 'presets.json'))
-		except Exception:
-			pass
-		candidates.append(os.path.join(os.getcwd(), 'db', 'presets.json'))
-		for path in candidates:
-			try:
-				with open(path, 'r') as fp:
-					presets = json.load(fp)
-				for preset in presets:
-					if preset.get('name') != config.AnchorPresetName:
-						continue
-					pos = (preset.get('transform') or {}).get('pos') \
-						or (preset.get('changes') or {}).get('transform.pos')
-					if pos:
-						logger.info("[Gomoku] Anchor预设位置: {} (来自{})".format(pos, path))
-						return (int(round(pos[0])), int(round(pos[1])), int(round(pos[2])))
-			except Exception as e:
-				logger.info("[Gomoku] 读取{}失败: {}".format(path, e))
-		return None
-
 	def EnsureBoardCenter(self):
-		"""解析棋盘中心：优先Anchor预设坐标，读不到用config兜底值"""
+		"""解析棋盘中心：config.BoardCenter 唯一事实来源（移动棋盘=改config）"""
 		if self.boardCenter is None:
-			anchorPos = self.FindAnchorPos()
-			if anchorPos:
-				self.boardCenter = anchorPos
-			else:
-				self.boardCenter = config.FallbackBoardCenter
-				logger.warning("[Gomoku] 未找到Anchor预设，使用兜底棋盘中心: {}".format(self.boardCenter))
+			self.boardCenter = config.BoardCenter
+			logger.info("[Gomoku] 棋盘中心: {}".format(self.boardCenter))
 		return self.boardCenter
 
 	def GetBoardBounds(self):

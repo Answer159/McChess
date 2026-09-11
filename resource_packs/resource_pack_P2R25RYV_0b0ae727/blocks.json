@@ -8,7 +8,7 @@
         "sound": "stone"
     },
     "wihzo:gomoku_stone_black_hardened": {
-        "textures": "gomoku_stone_black",
+        "textures": "gomoku_stone_black_hardened",
         "sound": "stone"
     },
     "wihzo:gomoku_stone_white": {
@@ -16,7 +16,7 @@
         "sound": "stone"
     },
     "wihzo:gomoku_stone_white_hardened": {
-        "textures": "gomoku_stone_white",
+        "textures": "gomoku_stone_white_hardened",
         "sound": "stone"
     },
     "wihzo:gomoku_stone_gold": {

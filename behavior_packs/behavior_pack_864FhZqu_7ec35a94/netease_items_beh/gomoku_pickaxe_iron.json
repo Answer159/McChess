@@ -8,8 +8,8 @@
         },
         "components": {
             "minecraft:max_stack_size": 1,
-            "minecraft:display_name": {
-                "value": "铁镐（采集硬化棋子矿，用一次即碎）"
+            "netease:customtips": {
+                "value": "用于采集硬化棋子矿，用一次即碎"
             },
             "netease:weapon": {
                 "type": "pickaxe",

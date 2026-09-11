@@ -8,8 +8,8 @@
         },
         "components": {
             "minecraft:max_stack_size": 1,
-            "minecraft:display_name": {
-                "value": "硬化棋子"
+            "netease:customtips": {
+                "value": "落子后成为硬化棋石（独立贴图可与普通棋子区分），需挖10秒才能拆除，普通棋子仅需3秒"
             }
         }
     }
