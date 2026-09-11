@@ -263,24 +263,24 @@ ItemTierDict = {
 	"low": {
 		"name": "低级道具",
 		"items": [PickaxeStoneName, PickaxeIronName],
-		"radius": (5, 10), "interval": 15,
+		"radius": (5, 10), "interval": 5,
 	},
 	"mid": {
 		"name": "中级道具",
 		"items": [InkItemName, DetonatorItemName],
-		"radius": (10, 18), "interval": 45,
+		"radius": (10, 18), "interval": 5,
 	},
 	"high": {
 		"name": "高级道具",
 		"items": [ExecutionSwordName],
-		"radius": (18, 28), "interval": 60,
+		"radius": (18, 28), "interval": 10,
 	},
 }
 # 各等级道具的在场合计上限（同等级共用一个空位池，谁用掉谁释放）
 TierMaxCountDict = {
 	"low": 6,
 	"mid": 4,
-	"high": 2,
+	"high": 3,
 }
 
 # ---------------------- 胜利条件 ----------------------

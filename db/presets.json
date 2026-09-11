@@ -50,7 +50,7 @@
         "changes": {
             "textboardAttrs.SetBackColor.alpha": 0.0, 
             "textboardAttrs.SetFaceCamera": false, 
-            "textboardAttrs.SetText": "白方: 0\n", 
+            "textboardAttrs.SetText": "\n\n", 
             "transform.pos": [
                 1853.3800048828125, 
                 63.91001892089844, 
@@ -64,7 +64,7 @@
         "dimension": 0, 
         "entityId": null, 
         "isPreLoad": false, 
-        "loadPresetCfg": false, 
+        "loadPresetCfg": true, 
         "maxChunkPos": [
             115, 
             34

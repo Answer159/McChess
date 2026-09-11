@@ -197,6 +197,12 @@ class TeamServerSystem(ServerSystem):
 			self.QueueAllocation(player)
 		CoroutineMgr.StartCoroutine(self.DelayUpdatePlayerPrefix())
 
+	# 系列赛续局时只清各队局内积分、保留当前队伍分配（供StartLogic快速续局调用）。
+	# 对照ReQueueAllocation：后者会重新分队，系列赛局间不能用它来清分
+	def ResetQueueScore(self):
+		self.queueScoreList = [0, 0, 0, 0, 0]
+		self.UpdateScoreboard()
+
 	def ShowTeamUI(self, flag):
 		teamUIInfo = self.CreateEventData()
 		teamUIInfo["showFlag"] = flag

@@ -226,7 +226,7 @@ class StartLogicServerSystem(ServerSystem):
 		self.playerEnsureDict[playerId] = True
 		self.BroadcastData()
 
-	def StartGame(self):
+	def StartGame(self, reAllocate=True):
 		self.BroadcastEvent(config.StartLogicEvent, self.CreateEventData())  # 其他系统需要的事件
 		# 如果有结束游戏组件将结束组件数据重置
 		endLogicServerSystem = serverApi.GetSystem(config.EndLogicModName, config.EndLogicServerSystemName)
@@ -237,7 +237,11 @@ class StartLogicServerSystem(ServerSystem):
 		if TeamServerSystem is None:
 			logger.info("===== Get TeamServerSystem Fail=====")
 		else:
-			TeamServerSystem.ReQueueAllocation(list(self.playerEnsureDict.keys()))
+			if reAllocate:
+				TeamServerSystem.ReQueueAllocation(list(self.playerEnsureDict.keys()))
+			else:
+				# 系列赛续局：队伍保持不变，只清局内积分
+				TeamServerSystem.ResetQueueScore()
 			TeamServerSystem.ShowTeamUI(True)
 		# 设置开始游戏位置
 		playerList = []
@@ -272,6 +276,25 @@ class StartLogicServerSystem(ServerSystem):
 
 	def GetGameStartState(self):
 		return self.state == 3
+
+	# 系列赛续局（EndLogic局间调用）：队伍保持不变，跳过大厅确认直接开下一局。
+	# 局间新进且尚无队伍的玩家按人最少的队伍补进（走TeamMod.QueueAllocation）；
+	# 局间离开的玩家随在线全集重建自然剔除。
+	def ReStartGameInSeries(self):
+		logger.info("===== ReStartGameInSeries =====")
+		TeamServerSystem = serverApi.GetSystem(config.TeamModName, config.TeamServerSystemName)
+		if TeamServerSystem:
+			for player in self.players:
+				if TeamServerSystem.GetPlayerTeamName(player) is None:
+					TeamServerSystem.QueueAllocation(player)
+		# 以当前在线全集重建开局名单
+		self.playerEnsureDict = dict(self.players)
+		self.playerAliveDict = dict(self.players)
+		self.startNum = len(self.players)
+		self.state = 3
+		# 开局（不重新分队），StartLogicEvent照常广播供下游重置局内状态
+		self.StartGame(reAllocate=False)
+		self.BroadcastData()
 
 	def ReStartGame(self):
 		TeamServerSystem = serverApi.GetSystem(config.TeamModName, config.TeamServerSystemName)

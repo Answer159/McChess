@@ -816,7 +816,15 @@ class GomokuServerSystem(ServerSystem):
 		# 胜负与平局都要真正结算本局（平局之前没通知EndLogic，会导致满盘后僵到超时）
 		endLogicServerSystem = serverApi.GetSystem(config.EndLogicModName, config.EndLogicServerSystemName)
 		if endLogicServerSystem:
-			endLogicServerSystem.ExternalSettleGame(sideText, victoryText)
+			# 系列赛记分需要真实队名（"黑方/白方"只是播报别名）：按胜方阵营反查TeamSideDict；
+			# 平局（winnerSide为None）与调试模式下无法定位队伍时传None，本局不记胜场
+			winnerTeamName = None
+			if winnerSide is not None:
+				for teamName, side in config.TeamSideDict.iteritems():
+					if side == winnerSide:
+						winnerTeamName = teamName
+						break
+			endLogicServerSystem.ExternalSettleGame(sideText, victoryText, None, winnerTeamName)
 		else:
 			self.Announce("§e未找到EndLogic组件，仅做本地播报")
 
