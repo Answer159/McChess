@@ -758,7 +758,7 @@ class GomokuServerSystem(ServerSystem):
 			stoneName, player = config.StoneWhiteName, WHITE
 		placed = 0
 		for cx, cy in legalCells:
-			stonePos = self.BoardToWorld(cx, cy)
+			stonePos = self.GridToWorld(cx, cy)
 			self.RunCommand('/setblock {} {} {} {}'.format(stonePos[0], stonePos[1], stonePos[2], stoneName))
 			result = self.PlaceInEngine(cx, cy, player)
 			if not result.ok:
