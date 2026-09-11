@@ -4,7 +4,7 @@
 
 ## 1. 前置验证
 
-- [ ] 1.1 在 MCStudio 模型/脚本里最小验证 TextBoard 多行显示:`CreateTextBoardInWorld("红队 1 : 0 蓝队\n五局三胜", ...)` 能否换行、观察文字大小,记录结论到 edit.log;不支持换行则记下,后续任务按"比分/赛制两块板"实现
+- [x] 1.1 在 MCStudio 模型/脚本里最小验证 TextBoard 多行显示:`CreateTextBoardInWorld("红队 1 : 0 蓝队\n五局三胜", ...)` 能否换行、观察文字大小,记录结论到 edit.log;不支持换行则记下,后续任务按"比分/赛制两块板"实现(用户进游戏验证通过)
 - [x] 1.2 跑 `python gomoku_dev/test_board.py`(任意 Python),确认基线 32 项单测通过,作为不受本变更影响的锚点
 
 ## 2. 服务端系列赛状态(EndLogicMod)
@@ -21,7 +21,7 @@
 - [x] 3.2 `startLogicServerSystem.py` 新增 `ReStartGameInSeries()`:以当前在线全集重建 ensure/alive 字典、不 `ReQueueAllocation`、传队伍出生点、`state=3`、广播 `StartLogicEvent`、通知 EndLogic 重置与开钟;验证:连赢两局,第二局队伍与第一局相同、棋盘已重置、无需大厅确认(代码完成,进游戏观察待做)
 - [x] 3.3 `endLogicServerSystem.ReStartGame` 按标记分流:未产生总冠军走 `ReStartGameInSeries`,产生总冠军走现有 `ReStartGame()`(state 0,后续重新分队);验证:夺冠后下一场重新分队且比分 0:0(代码完成,进游戏观察待做)
 - [x] 3.4 `script_Gomoku/gomokuServerSystem.py` 的 `OnGameEnd`:调用 `ExternalSettleGame` 时补传真实队名(经 `GetPlayerTeamName`),平局传 None;验证:黑方连珠后 edit.log 记到该队名胜场+1(代码完成,进游戏观察待做;实现为经 TeamSideDict 反查队名,winnerPlayer 是棋子值非玩家id)
-- [ ] 3.5 边界验证:局间退出一名玩家后下一局正常开局;平局(棋盘下满)后双方比分不变直接续局
+- [x] 3.5 边界验证:局间退出一名玩家后下一局正常开局;平局(棋盘下满)后双方比分不变直接续局(用户进游戏验证通过)
 
 ## 4. 客户端记分牌(TextBoard)
 
@@ -32,6 +32,6 @@
 
 ## 5. 收尾验收
 
-- [ ] 5.1 三条结算路径(超时/仅剩一队/连珠)+ 平局的回归:各触发一次,edit.log 无异常、比分与重启路径符合 specs/series-match
-- [ ] 5.2 删除场景中的 TextBoard 预设(编辑器操作,坐标已抄入 config),确认记分牌不受影响
+- [x] 5.1 三条结算路径(超时/仅剩一队/连珠)+ 平局的回归:各触发一次,edit.log 无异常、比分与重启路径符合 specs/series-match(用户进游戏验证通过)
+- [x] 5.2 删除场景中的 TextBoard 预设(编辑器操作,坐标已抄入 config),确认记分牌不受影响(用户已在编辑器完成)
 - [x] 5.3 复跑 `gomoku_dev/test_board.py` 确认 32 项通过;git diff 复查只涉及 script_EndLogic / script_StartLogic / script_Team / script_Gomoku 四个文件夹(已验证:32 项 OK,diff 恰为四个文件夹 6 个文件)

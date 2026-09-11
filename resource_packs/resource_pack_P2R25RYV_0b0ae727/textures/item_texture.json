@@ -21,10 +21,13 @@
             "textures": "textures/blocks/golden_chess"
         },
         "gomoku_ink": {
-            "textures": "textures/blocks/obsidian"
+            "textures": "textures/items/ink"
         },
         "gomoku_detonator": {
             "textures": "textures/blocks/redstone_block"
+        },
+        "gomoku_board": {
+            "textures": "textures/blocks/chess_base"
         }
     }
 }

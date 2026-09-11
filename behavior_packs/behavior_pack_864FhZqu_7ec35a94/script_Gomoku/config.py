@@ -21,6 +21,7 @@ CommandComponent = "command"
 ItemComponent = "item"
 PosComponent = "pos"
 EngineTypeComponent = "engineType"
+NameComponent = "name"
 
 # Server Event
 #  Engine
@@ -33,7 +34,11 @@ PlayerAttackEntityEvent = "PlayerAttackEntityEvent"
 # （EntityRemoveEvent已弃用：SpawnItemToLevel拿不到entityId，物品计数改为
 #   自维护itemExpireDict模型，不再依赖掉落物实体移除事件）
 ServerPlayerTryTouchEvent = "ServerPlayerTryTouchEvent"
+ServerChatEvent = "ServerChatEvent"
 ScriptTickServerEvent = "OnScriptTickServer"
+PlayerDieEvent = "PlayerDieEvent"
+DelServerPlayerEvent = "DelServerPlayerEvent"
+DamageEvent = "DamageEvent"
 #  Custom（服务端广播给所有客户端，供后续五子棋UI监听）
 GomokuGameResultEvent = "GomokuGameResultEvent"
 
@@ -57,6 +62,14 @@ BoardCenter = (1871, 62, 556)
 BoardSize = 9
 # 玩家进服后延迟多少秒尝试铺盘（避初始化竞态；0=立即）
 BoardBuildDelaySeconds = 1
+# 引擎网格边长：主盘9x9 + 便携棋盘扩展格共用一张大网格（以主盘中心为正中心，
+# 世界坐标平移映射进引擎，见gomokuServerSystem的WorldToGrid）。
+# ★须为奇数且 >= BoardSize；99 = 引擎核心MAX_SIZE上限；也须 <= TickingAreaRadius*16
+# （常驻加载区要盖得住整个网格——扩展格落在其中任意处都能落子）
+EngineGridSize = 99
+# 便携棋盘扩展格距主盘中心的最大距离（格）。★须 < EngineGridSize//2
+# 且 < TickingAreaRadius*16，超出的摆放会被拒绝
+CellPlaceMaxRadius = 48
 
 # ---------------------- 资源刷新：高度与维度 ----------------------
 # 矿石贴地表放置（GetTopBlockHeight随地形）；
@@ -113,17 +126,22 @@ PieceItemHardened = "wihzo:gomoku_piece_hardened"
 PieceItemGold = "wihzo:gomoku_piece_gold"
 InkItemName = "wihzo:gomoku_ink"
 DetonatorItemName = "wihzo:gomoku_detonator"
+BoardItemName = "wihzo:gomoku_board"
 
 # ---------------------- 道具表 ----------------------
 # 所有道具的统一定义，后续开发新道具只加这里，系统按 type 分派行为：
 #   name:       短显示名（播报用；物品JSON里的display_name是带说明的详细版）
-#   type:       'piece' 棋子 / 'pickaxe' 采集镐 / 'weapon' 武器 / 'ink' 转化墨水 / 'bomb' 爆炸雷管
+#   type:       'piece' 棋子 / 'pickaxe' 采集镐 / 'weapon' 武器 / 'ink' 转化墨水 / 'bomb' 爆炸雷管 /
+#               'board' 便携棋盘
 #   consumable: 使用一次即销毁（耐久1）
 #   piece 专用:  fromOre 产出该棋子的矿 / wildcard 万能挡子（金棋子，落子不分颜色、只挡线不获胜）
 #   pickaxe专用: mineOre 能采集的矿（各挖各的）
 #   weapon 专用: damage 攻击玩家造成的伤害（缺省用DefaultWeaponDamage）
 #   ink 专用:    无额外字段（转化目标=右键到的敌方棋石，见HandleInkUse）
 #   bomb 专用:   无额外字段（爆炸范围见BombBlastRange，右键棋盘引爆）
+#   board 专用:  maxUses 可铺的1x1扩展格数（★须与beh JSON的minecraft:max_damage一致——
+#               耐久是引擎物品数据，扣减/归零销毁见DamageBoardItem；扩展格与主盘
+#               共用引擎网格，上面的子与主盘的子互相连线）
 ItemTable = {
 	PieceItemNormal: {
 		"name": "普通棋子", "type": "piece",
@@ -156,6 +174,10 @@ ItemTable = {
 	DetonatorItemName: {
 		"name": "爆炸雷管", "type": "bomb", "consumable": True,
 	},
+	BoardItemName: {
+		"name": "便携棋盘", "type": "board",
+		"maxUses": 2,  # 可铺2格（★与beh JSON的minecraft:max_damage一致）
+	},
 }
 
 # 雷管专用：爆炸范围 = 以雷管方块为中心的立方体边长（3=3x3x3，各轴向±1），
@@ -163,6 +185,9 @@ ItemTable = {
 # 引信时长（秒）：摆出雷管方块后等这么久才引爆（给对手挖掉拆除的窗口）
 BombBlastRange = 3
 BombFuseSeconds = 3
+# 引爆时的原生TNT爆炸表现（原版爆炸粒子huge_explosion_emitter + 音效random.explode，
+# 纯表现——只播特效，不炸基座/地形，清子逻辑不变）
+BombExplosionEffect = True
 
 # 武器没写damage时的兜底伤害
 DefaultWeaponDamage = 9999
@@ -187,6 +212,19 @@ FullPickupDelayFrames = 30
 # 节流播报的按(玩家,类型)冷却（秒，防连续触发刷屏；棋子上限/基座防挖提示共用）
 ThrottledAnnounceCooldown = 5
 
+# ---------------------- 阵亡与复活 ----------------------
+# 原版死亡界面已由WorldMod的immediate_respawn游戏规则关闭（阵亡不弹"是否重生"窗口）：
+# 引擎阵亡后自动重生、无需点击。重生后行动封锁这么久（秒）：
+# 落子/墨水/雷管/挖矿/拾取/武器攻击全部拦截，每秒聊天框倒计时，
+# 期间免疫伤害（防复活点被连杀蹲尸），时间到自动恢复行动。0 = 不封锁（阵亡即满状态回归）
+DeathRespawnHoldSeconds = 5
+# 引擎复活点 = 棋盘中心 + 此偏移（x, 备用y, z；实际y取地表，查询失败才用备用y）。
+# 无床玩家默认在世界出生点重生，本图出生点在远处未加载区块，重生会永远卡在
+# "正在重生"——故进服/开局时把每个玩家的复活点设到棋盘外沿（tickingarea常驻
+# 加载范围内）。重生落地后LimitedRespawn再传送到队伍复活点，此点只保证重生能完成。
+# ★z方向偏移须超出棋盘半边长（BoardSize/2），免得重生点落在棋盘上
+RespawnPosOffset = (0, 2, 7)
+
 # ---------------------- 队伍阵营映射 ----------------------
 # 队伍名 -> 阵营（★须与Team组件编辑器里配置的队伍名一致，改队伍名=这里同步改）
 TeamSideDict = {
@@ -199,6 +237,10 @@ SideNameDict = {"white": "白方", "black": "黑方", "gold": "金棋子"}
 # 单人调试开关：True时单人落子黑白交替（无视队伍），用于单人验证双方颜色与胜负逻辑；
 # 正式对战必须为False（按落子方队伍定色）。金棋子不受影响（本就不分队）
 DebugSoloAlternateSides = False
+
+# 调试聊天命令开关：True时聊天输入 #give <道具名> 可直接领取道具（#give 列出可领道具，
+# 拿便携棋盘/处决剑等做验证用）；正式对战必须关掉
+DebugChatCommands = True
 
 # ---------------------- 资源总量维持 ----------------------
 # 每种资源在地图上的存量上限：刷新时先数当前已有的数量——已有 >= 上限就跳过本次刷新，
@@ -268,7 +310,7 @@ ItemTierDict = {
 	},
 	"mid": {
 		"name": "中级道具",
-		"items": [InkItemName, DetonatorItemName],
+		"items": [InkItemName, DetonatorItemName, BoardItemName],
 		"radius": (10, 18), "interval": 5,
 	},
 	"high": {
@@ -282,6 +324,33 @@ TierMaxCountDict = {
 	"low": 6,
 	"mid": 4,
 	"high": 3,
+}
+
+# ---------------------- 问号方块（随机道具块） ----------------------
+# 中环偏外独立刷新的问号方块：任意镐可采（石镐/铁镐皆可，耐久1采一次即碎，
+# 与矿石不同——不限定矿种，拿任意镐都行）；徒手/没拿镐也能挖穿但拿不到奖励
+# （与矿石"拿错工具白挖"同款原版体验）。采到后从RandomBlockPoolDict
+# 加权随机抽一个道具直接发到背包。名字须与netease_blocks/下JSON、
+# 资源包terrain_texture.json/blocks.json的注册一致
+RandomBlockName = "wihzo:gomoku_block_random"
+# 随机奖励池（道具名 -> 权重）：不含棋子——避开棋子携带上限（MaxCarriedPieces）
+# 满时抽到棋子无处安放的边界；权重越大越常出，等权就全写一样的数
+RandomBlockPoolDict = {
+	PickaxeStoneName: 3,
+	PickaxeIronName: 2,
+	InkItemName: 2,
+	DetonatorItemName: 2,
+	BoardItemName: 1,
+	ExecutionSwordName: 1,
+}
+# 刷新参数（独立于SpawnConfigList/ItemTierDict，自成一条刷新协程）：
+# radius 刷新环(内,外半径，格) / interval 刷新间隔(秒) /
+# maxCount 场上存量上限（维持总量，走矿石计数oreCountDict+周期重扫） /
+# chance 每次刷新时刻的兑现概率（缺省DefaultSpawnChance必刷）
+RandomBlockSpawnConfig = {
+	"radius": (18, 28),
+	"interval": 30,
+	"maxCount": 3,
 }
 
 # ---------------------- 胜利条件 ----------------------
