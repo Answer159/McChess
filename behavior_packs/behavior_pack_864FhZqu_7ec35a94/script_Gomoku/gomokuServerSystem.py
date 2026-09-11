@@ -226,16 +226,78 @@ class GomokuServerSystem(ServerSystem):
 		for spawnConfig in config.SpawnConfigList:
 			coroutineIter = CoroutineMgr.StartCoroutine(self.DelaySpawn(spawnConfig))
 			self.spawnCoroutines.append(coroutineIter)
+		# 道具等级池刷新协程（镐/剑/墨水/雷管等，共用等级上限，见ItemTierDict）
+		for tierKey, tierCfg in config.ItemTierDict.iteritems():
+			coroutineIter = CoroutineMgr.StartCoroutine(self.DelayTierSpawn(tierKey, tierCfg))
+			self.spawnCoroutines.append(coroutineIter)
 		# 矿石存量重扫协程（只启动一次，跨回合常驻）：开局立即全环数一遍（兼容存档残留的矿），
 		# 此后按RecountIntervalSeconds周期重扫修正实时计数的误差
 		if self.recountCoroutine is None:
 			self.recountCoroutine = CoroutineMgr.StartCoroutine(self.RecountOres())
-		logger.info("[Gomoku] 资源刷新已启动，共{}个刷新点".format(len(config.SpawnConfigList)))
+		logger.info("[Gomoku] 资源刷新已启动，共{}个刷新点+{}个道具等级池".format(
+			len(config.SpawnConfigList), len(config.ItemTierDict)))
 
 	def DelaySpawn(self, spawnConfig):
 		while True:
 			yield -spawnConfig['interval'] * 30
 			self.SpawnAtRing(spawnConfig)
+
+	def DelayTierSpawn(self, tierKey, tierCfg):
+		while True:
+			yield -tierCfg['interval'] * 30
+			self.SpawnTierItem(tierKey, tierCfg)
+
+	def SpawnTierItem(self, tierKey, tierCfg):
+		"""等级道具刷新（config.ItemTierDict）：到点先查该等级全部道具的"在场"合计
+		（TierMaxCountDict等级共用上限，用掉立刻释放空位），没满则掷chance、
+		在池内等权随机抽一个道具，在该等级对应的环上取点生成。
+		池内道具不设各自上限——道具种类越多只让池子越丰富，场上总量不变"""
+		items = tierCfg['items']
+		maxCount = config.TierMaxCountDict.get(tierKey)
+		if maxCount is not None and sum(self.CountItemEntities(name) for name in items) >= maxCount:
+			return  # 该等级在场已满：不补，用掉/到期释放空位后才会再刷
+		if random.random() > tierCfg.get('chance', config.DefaultSpawnChance):
+			return
+		itemName = random.choice(items)
+		cx, cy, cz = self.EnsureBoardCenter()
+		inner, outer = tierCfg['radius']
+		angle = math.radians(random.uniform(0, 360))
+		radius = random.uniform(inner, outer)
+		x = int(cx + radius * math.sin(angle))
+		z = int(cz + radius * math.cos(angle))
+		surfaceY = self.FindSurfaceY(x, z)
+		if surfaceY is None:
+			return
+		spawnPos = (x, surfaceY + config.ItemSpawnHeightOffset, z)
+		if self.SpawnItemEntity(itemName, config.DefaultSpawnCount, spawnPos):
+			logger.info("[Gomoku] {}刷新: {} @ {} (等级存量{}/{})".format(
+				tierCfg['name'], itemName, spawnPos,
+				sum(self.CountItemEntities(name) for name in items), maxCount))
+
+	def SpawnItemEntity(self, itemName, count, spawnPos):
+		"""生成掉落物并登记自维护计数，返回是否成功（棋子直刷/等级道具池共用）。
+		键名对照官方模板：自定义物品须用newItemName/newAuxValue（GodChef），
+		itemName/auxValue只对原版物品可靠（BedWars全是原版物品）"""
+		try:
+			itemComp = serverApi.CreateComponent(self.levelId, config.Minecraft, config.ItemComponent)
+			result = itemComp.SpawnItemToLevel(
+				{"newItemName": itemName, "count": count, "newAuxValue": 0},
+				config.MainDimensionId, spawnPos)
+			if not result:
+				# 回退itemName键再试（不同版本对两种键的支持度不一），仍失败则告警
+				result = itemComp.SpawnItemToLevel(
+					{"itemName": itemName, "count": count, "auxValue": 0},
+					config.MainDimensionId, spawnPos)
+			if not result:
+				logger.warning("[Gomoku] 物品刷新失败: {} x{} @ {}".format(itemName, count, spawnPos))
+				return False
+			# 自维护计数：登记到期时刻（对齐掉落物5分钟自然消失，届时自动剔除）
+			self.itemExpireDict.setdefault(itemName, []).append(
+				time.time() + config.ItemDespawnSeconds)
+			return True
+		except Exception as e:
+			logger.warning("[Gomoku] SpawnItemToLevel 失败: {}".format(e))
+			return False
 
 	def SpawnAtRing(self, spawnConfig):
 		"""在以棋盘中心（Anchor）为圆心的环形区域内随机取一点刷新：
@@ -273,8 +335,7 @@ class GomokuServerSystem(ServerSystem):
 					blockName, (x, surfaceY, z), self.oreCountDict[blockName], maxCount))
 		else:
 			# 掉落物实体自带重力，悬空生成后自然坠落到地面；count可按条目覆盖，默认走config
-			# 键名对照官方模板：自定义物品须用newItemName/newAuxValue（GodChef），
-			# itemName/auxValue只对原版物品可靠（BedWars全是原版物品）
+			# （生成+登记的公共实现见SpawnItemEntity，等级道具池也走同一个）
 			itemName = spawnConfig['itemName']
 			count = spawnConfig.get('count', config.DefaultSpawnCount)
 			maxCount = config.SpawnMaxCountDict.get(itemName)
@@ -284,26 +345,9 @@ class GomokuServerSystem(ServerSystem):
 			if random.random() > spawnConfig.get('chance', config.DefaultSpawnChance):
 				return
 			spawnPos = (x, surfaceY + config.ItemSpawnHeightOffset, z)
-			try:
-				itemComp = serverApi.CreateComponent(self.levelId, config.Minecraft, config.ItemComponent)
-				result = itemComp.SpawnItemToLevel(
-					{"newItemName": itemName, "count": count, "newAuxValue": 0},
-					config.MainDimensionId, spawnPos)
-				if not result:
-					# 回退itemName键再试（不同版本对两种键的支持度不一），仍失败则告警
-					result = itemComp.SpawnItemToLevel(
-						{"itemName": itemName, "count": count, "auxValue": 0},
-						config.MainDimensionId, spawnPos)
-				if result:
-					# 自维护计数：登记到期时刻（对齐掉落物5分钟自然消失，届时自动剔除）
-					self.itemExpireDict.setdefault(itemName, []).append(
-						time.time() + config.ItemDespawnSeconds)
-					logger.info("[Gomoku] 物品刷新: {} x{} @ {} (存量{}/{})".format(
-						itemName, count, spawnPos, self.CountItemEntities(itemName), maxCount))
-				else:
-					logger.warning("[Gomoku] 物品刷新失败: {} x{} @ {}".format(itemName, count, spawnPos))
-			except Exception as e:
-				logger.warning("[Gomoku] SpawnItemToLevel 失败: {}".format(e))
+			if self.SpawnItemEntity(itemName, count, spawnPos):
+				logger.info("[Gomoku] 物品刷新: {} x{} @ {} (存量{}/{})".format(
+					itemName, count, spawnPos, self.CountItemEntities(itemName), maxCount))
 
 	def CountItemEntities(self, itemName):
 		"""数某物品"当前在场（地上+背包里未使用）"的数量（自维护，不依赖引擎实体枚举）。
@@ -381,8 +425,10 @@ class GomokuServerSystem(ServerSystem):
 				passCounts[blockName] = passCounts.get(blockName, 0) + count
 				self.oreCountDict[blockName] = passCounts[blockName]
 			# 物品存量顺带扫一遍打日志（矿石走实时计数+周期重扫，物品走即时扫描）
-			itemNames = sorted(set(c['itemName'] for c in config.SpawnConfigList if c['type'] == 'item'))
-			itemCounts = {name: self.CountItemEntities(name) for name in itemNames}
+			itemNames = set(c['itemName'] for c in config.SpawnConfigList if c['type'] == 'item')
+			for tierCfg in config.ItemTierDict.values():
+				itemNames.update(tierCfg['items'])
+			itemCounts = {name: self.CountItemEntities(name) for name in sorted(itemNames)}
 			logger.info("[Gomoku] 存量重扫: 矿石{} 物品{}".format(self.oreCountDict, itemCounts))
 			yield -config.RecountIntervalSeconds * 30
 

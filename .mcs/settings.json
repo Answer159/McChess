@@ -4,10 +4,12 @@
     "ShortItemSettings": [
         "resource_packs\\resource_pack_P2R25RYV_0b0ae727\\ui",
         "behavior_packs\\behavior_pack_864FhZqu_7ec35a94\\Presets",
+        "behavior_packs\\behavior_pack_864FhZqu_7ec35a94\\BoxData",
         "resource_packs\\resource_pack_P2R25RYV_0b0ae727\\effects",
         "resource_packs\\resource_pack_P2R25RYV_0b0ae727\\models",
         "resource_packs\\resource_pack_P2R25RYV_0b0ae727\\textures"
     ],
     "Uluru.autoLayerDict": {},
-    "Uluru.checkSuspectOldUI": true
+    "Uluru.checkSuspectOldUI": true,
+    "add_box_path": "D:/MCStudioDownload/MCX64Editor/Res/Genesis/models"
 }

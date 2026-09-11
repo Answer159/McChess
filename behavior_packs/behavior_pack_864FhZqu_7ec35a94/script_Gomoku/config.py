@@ -214,17 +214,9 @@ SpawnMaxCountDict = {
 	"wihzo:gomoku_ore_hardened": 6,
 	# 金矿：外环守卫区，极稀少
 	"wihzo:gomoku_ore_gold": 2,
-	# 直刷棋子物品
+	# 直刷棋子物品（道具不在此表——道具走分级共用上限，见ItemTierDict）
 	PieceItemNormal: 5,
 	PieceItemHardened: 3,
-	# 道具（孤注一掷的投资，存量天然稀少）
-	PickaxeStoneName: 2,
-	PickaxeIronName: 2,
-	ExecutionSwordName: 1,
-	# 转化墨水：一次性的翻盘道具，地图上至多1瓶
-	InkItemName: 3,
-	# 爆炸雷管：不分敌我的清场道具，地图上至多1根
-	DetonatorItemName: 3,
 }
 # 矿石全环重扫间隔（秒）：重扫分帧进行，每帧查ScanColumnsPerTick列，避免单tick卡顿
 RecountIntervalSeconds = 30
@@ -256,17 +248,40 @@ SpawnConfigList = [
 	{"type": "item", "itemName": PieceItemNormal, "radius": (5, 9), "angleRange": (0, 360), "interval": 3},
 	# 硬化棋子物品：中环直接掉落
 	{"type": "item", "itemName": PieceItemHardened, "radius": (9, 14), "angleRange": (0, 360), "interval": 15},
-	# 石镐：近环
-	{"type": "item", "itemName": PickaxeStoneName, "radius": (5, 9), "angleRange": (0, 360), "interval": 12},
-	# 铁镐：中环
-	{"type": "item", "itemName": PickaxeIronName, "radius": (9, 14), "angleRange": (0, 360), "interval": 25},
-	# 处决剑：中环
-	{"type": "item", "itemName": ExecutionSwordName, "radius": (11, 16), "angleRange": (0, 360), "interval": 35},
-	# 转化墨水：中环偏外，久等才有一次机会、且只有六成概率兑现
-	{"type": "item", "itemName": InkItemName, "radius": (14, 20), "angleRange": (0, 360), "interval": 5, "chance": 0.6},
-	# 爆炸雷管：外环边缘，跟金矿一样是"离开战场一趟"的投资
-	{"type": "item", "itemName": DetonatorItemName, "radius": (20, 28), "angleRange": (0, 360), "interval": 5, "chance": 0.5},
+	# 道具（镐/剑/墨水/雷管）不走本表——按等级走ItemTierDict的分级刷新
 ]
+
+# ---------------------- 道具分级刷新 ----------------------
+# 道具（type != 'piece'的物品）按等级分池刷新：每个等级对应一个环——
+# 近环刷低级、中环刷中级、远环刷高级（离棋盘越远越值钱，跑得越远投资越大）；
+# 到点先查该等级全部道具的"在场"合计（地上+背包未使用，用掉立刻释放），
+# 没到TierMaxCountDict上限就掷chance、从池子里等权随机抽一个生成。
+# 池内道具不再各自设上限——道具种类越多，池子越丰富，但场上总量恒定。
+# 字段：name 播报/日志名 / items 道具池 / radius 刷新环（★内半径须 > BoardSize/2）/
+# interval 刷新间隔秒 / chance 每次刷新时刻的兑现概率（缺省必刷）
+ItemTierDict = {
+	"low": {
+		"name": "低级道具",
+		"items": [PickaxeStoneName, PickaxeIronName],
+		"radius": (5, 10), "interval": 15,
+	},
+	"mid": {
+		"name": "中级道具",
+		"items": [InkItemName, DetonatorItemName],
+		"radius": (10, 18), "interval": 45,
+	},
+	"high": {
+		"name": "高级道具",
+		"items": [ExecutionSwordName],
+		"radius": (18, 28), "interval": 60,
+	},
+}
+# 各等级道具的在场合计上限（同等级共用一个空位池，谁用掉谁释放）
+TierMaxCountDict = {
+	"low": 6,
+	"mid": 4,
+	"high": 2,
+}
 
 # ---------------------- 胜利条件 ----------------------
 # 连珠数（几子连珠获胜）

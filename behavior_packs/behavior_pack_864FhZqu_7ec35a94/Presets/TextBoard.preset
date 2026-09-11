@@ -1,0 +1,63 @@
+{
+    "boxDataList": [],
+    "childParts": [],
+    "childPresets": [
+        {
+            "bornType": 0,
+            "changes": {
+                "name": "Text",
+                "textboardAttrs.SetBackColor.alpha": 0.0,
+                "textboardAttrs.SetFaceCamera": false,
+                "textboardAttrs.SetText": "白方: 0\n",
+                "transform.scale[0]": 3.0,
+                "transform.scale[1]": 3.0,
+                "transform.scale[2]": 3.0
+            },
+            "classType": "PresetInstance",
+            "dimension": 0,
+            "entityId": null,
+            "id": null,
+            "ids": [],
+            "isPreLoad": false,
+            "loadPresetCfg": false,
+            "maxChunkPos": null,
+            "minChunkPos": null,
+            "name": "文字面板预设",
+            "objId": "c5883d132ad44bdda1177b0ade188138",
+            "presetId": "TextboardPreset",
+            "presetType": null,
+            "transform": {
+                "classType": "Transform",
+                "objId": "ae0557a19e4142939eb6d39c22fb19d3",
+                "pos": [
+                    0,
+                    0,
+                    0
+                ],
+                "rotation": [
+                    0,
+                    0,
+                    0
+                ],
+                "scale": [
+                    3.0,
+                    3.0,
+                    3.0
+                ]
+            },
+            "virtual": true
+        }
+    ],
+    "classType": "PresetBase",
+    "dimension": 0,
+    "forceLoad": false,
+    "name": "TextBoard",
+    "notifyRemove": true,
+    "objId": "a420582a1b614c0fa5884f4df56b279b",
+    "preLoad": false,
+    "presetId": "612f381b-6290-4bd5-ab53-a9019fb1f7f0",
+    "presetType": "空预设",
+    "previewEnable": true,
+    "singleton": false,
+    "unique": false
+}
