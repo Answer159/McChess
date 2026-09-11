@@ -19,6 +19,12 @@
         },
         "gomoku_piece_gold": {
             "textures": "textures/blocks/golden_chess"
+        },
+        "gomoku_ink": {
+            "textures": "textures/blocks/obsidian"
+        },
+        "gomoku_detonator": {
+            "textures": "textures/blocks/redstone_block"
         }
     }
 }

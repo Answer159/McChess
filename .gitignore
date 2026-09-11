@@ -1,2 +1,22 @@
+# Python
 __pycache__/
 *.pyc
+*.pyo
+
+# MCStudio 编辑器本地会话状态（每次开编辑器都变，纯噪音；
+# .mcs/settings.json 是项目级配置，保留跟踪）
+.mcs/editorSave.json
+.mcs/collectMaterial.json
+
+# MC 世界存档滚动备份（level.dat 的自动备份，冗余）
+level.dat_old
+
+# Claude Code 本地会话/权限配置（项目共享的 skills/commands 仍跟踪）
+.claude/settings.local.json
+
+# OS / IDE
+Thumbs.db
+desktop.ini
+.DS_Store
+.vscode/
+.idea/

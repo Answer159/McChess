@@ -29,9 +29,9 @@ ServerBlockUseEvent = "ServerBlockUseEvent"
 ServerItemUseOnEvent = "ServerItemUseOnEvent"
 ServerPlayerTryDestroyBlockEvent = "ServerPlayerTryDestroyBlockEvent"
 PlayerAttackEntityEvent = "PlayerAttackEntityEvent"
-# 掉落物实体移除事件（被捡起/超时消失/回合清理）——用于物品存量计数剔除
-EntityRemoveEvent = "EntityRemoveEvent"
 # 玩家即将捡起掉落物事件——棋子携带超上限时cancel拦截
+# （EntityRemoveEvent已弃用：SpawnItemToLevel拿不到entityId，物品计数改为
+#   自维护itemExpireDict模型，不再依赖掉落物实体移除事件）
 ServerPlayerTryTouchEvent = "ServerPlayerTryTouchEvent"
 ScriptTickServerEvent = "OnScriptTickServer"
 #  Custom（服务端广播给所有客户端，供后续五子棋UI监听）
@@ -88,10 +88,19 @@ StoneWhiteName = "wihzo:gomoku_stone_white"
 StoneBlackHardenedName = "wihzo:gomoku_stone_black_hardened"
 StoneWhiteHardenedName = "wihzo:gomoku_stone_white_hardened"
 StoneGoldName = "wihzo:gomoku_stone_gold"
+# 已点燃的雷管方块（TNT外观；右键棋盘摆出，BombFuseSeconds秒后引爆，
+# 引爆前被挖掉=拆除）。名字须与netease_blocks/下JSON一致
+DetonatorBlockName = "wihzo:gomoku_detonator_block"
 # 全部棋石方块集合（挖掘时按棋盘格处理）
 StoneBlockNameSet = {
     StoneBlackName, StoneWhiteName, StoneGoldName,
     StoneBlackHardenedName, StoneWhiteHardenedName,
+}
+# 棋石名 -> 所属阵营（墨水转化用：判断右键到的是敌方的子还是己方的子）
+StoneSideDict = {
+    StoneBlackName: "black", StoneBlackHardenedName: "black",
+    StoneWhiteName: "white", StoneWhiteHardenedName: "white",
+    StoneGoldName: "gold",
 }
 
 # ---------------------- 自定义物品（名字须与行为包netease_items_beh/、
@@ -102,15 +111,19 @@ ExecutionSwordName = "wihzo:execution_sword"
 PieceItemNormal = "wihzo:gomoku_piece_normal"
 PieceItemHardened = "wihzo:gomoku_piece_hardened"
 PieceItemGold = "wihzo:gomoku_piece_gold"
+InkItemName = "wihzo:gomoku_ink"
+DetonatorItemName = "wihzo:gomoku_detonator"
 
 # ---------------------- 道具表 ----------------------
 # 所有道具的统一定义，后续开发新道具只加这里，系统按 type 分派行为：
 #   name:       短显示名（播报用；物品JSON里的display_name是带说明的详细版）
-#   type:       'piece' 棋子 / 'pickaxe' 采集镐 / 'weapon' 武器
+#   type:       'piece' 棋子 / 'pickaxe' 采集镐 / 'weapon' 武器 / 'ink' 转化墨水 / 'bomb' 爆炸雷管
 #   consumable: 使用一次即销毁（耐久1）
 #   piece 专用:  fromOre 产出该棋子的矿 / wildcard 万能挡子（金棋子，落子不分颜色、只挡线不获胜）
 #   pickaxe专用: mineOre 能采集的矿（各挖各的）
 #   weapon 专用: damage 攻击玩家造成的伤害（缺省用DefaultWeaponDamage）
+#   ink 专用:    无额外字段（转化目标=右键到的敌方棋石，见HandleInkUse）
+#   bomb 专用:   无额外字段（爆炸范围见BombBlastRange，右键棋盘引爆）
 ItemTable = {
 	PieceItemNormal: {
 		"name": "普通棋子", "type": "piece",
@@ -137,7 +150,19 @@ ItemTable = {
 		"name": "处决剑", "type": "weapon", "consumable": True,
 		"damage": 9999,
 	},
+	InkItemName: {
+		"name": "转化墨水", "type": "ink", "consumable": True,
+	},
+	DetonatorItemName: {
+		"name": "爆炸雷管", "type": "bomb", "consumable": True,
+	},
 }
+
+# 雷管专用：爆炸范围 = 以雷管方块为中心的立方体边长（3=3x3x3，各轴向±1），
+# 只清范围内的棋石（基座/地形无损，不留坑）；雷管可叠在棋子上方摆放，不替换棋子。
+# 引信时长（秒）：摆出雷管方块后等这么久才引爆（给对手挖掉拆除的窗口）
+BombBlastRange = 3
+BombFuseSeconds = 3
 
 # 武器没写damage时的兜底伤害
 DefaultWeaponDamage = 9999
@@ -179,7 +204,10 @@ DebugSoloAlternateSides = False
 # 每种资源在地图上的存量上限：刷新时先数当前已有的数量——已有 >= 上限就跳过本次刷新，
 # 总量维持恒定，玩家采走（存量下降）后才会补刷。
 # 矿石计数：开局全环重扫一遍（兼容存档残留），此后每RecountIntervalSeconds秒重扫修正，
-# 平时靠 刷出+1 / 挖碎-1 实时维护；物品计数：按刷出的掉落物实体跟踪（捡起/消失/回合清理即剔除）。
+# 平时靠 刷出+1 / 挖碎-1 实时维护；
+# 物品计数：自维护"在场"数（地上的+背包里未使用的都算在场）——用掉立刻释放空位
+# （ConsumeCarriedItem消耗时剔除），到期未使用的按自然消失释放（SpawnItemToLevel
+# 只返回True拿不到entityId，掉落物消失无法感知，按登记的到期时刻剔除）。
 SpawnMaxCountDict = {
 	# 普通矿：黑白两半区合计（每半区常驻约6个）
 	"wihzo:gomoku_ore_normal": 12,
@@ -194,11 +222,16 @@ SpawnMaxCountDict = {
 	PickaxeStoneName: 2,
 	PickaxeIronName: 2,
 	ExecutionSwordName: 1,
+	# 转化墨水：一次性的翻盘道具，地图上至多1瓶
+	InkItemName: 3,
+	# 爆炸雷管：不分敌我的清场道具，地图上至多1根
+	DetonatorItemName: 3,
 }
 # 矿石全环重扫间隔（秒）：重扫分帧进行，每帧查ScanColumnsPerTick列，避免单tick卡顿
 RecountIntervalSeconds = 30
 ScanColumnsPerTick = 25
-# 掉落物自然消失时间（秒）：超龄的计数条目剔除，防实体移除事件丢失导致计数虚高
+# 掉落物自然消失时间（秒）：物品"在场"计数据此到期释放空位（对齐原版5分钟消失；
+# 物品被使用会立刻释放，不等这个时间）
 ItemDespawnSeconds = 300
 
 # ---------------------- 资源刷新表（以棋盘中心为基准的环形区域，参数按策划案doc） ----------------------
@@ -230,6 +263,10 @@ SpawnConfigList = [
 	{"type": "item", "itemName": PickaxeIronName, "radius": (9, 14), "angleRange": (0, 360), "interval": 25},
 	# 处决剑：中环
 	{"type": "item", "itemName": ExecutionSwordName, "radius": (11, 16), "angleRange": (0, 360), "interval": 35},
+	# 转化墨水：中环偏外，久等才有一次机会、且只有六成概率兑现
+	{"type": "item", "itemName": InkItemName, "radius": (14, 20), "angleRange": (0, 360), "interval": 5, "chance": 0.6},
+	# 爆炸雷管：外环边缘，跟金矿一样是"离开战场一趟"的投资
+	{"type": "item", "itemName": DetonatorItemName, "radius": (20, 28), "angleRange": (0, 360), "interval": 5, "chance": 0.5},
 ]
 
 # ---------------------- 胜利条件 ----------------------

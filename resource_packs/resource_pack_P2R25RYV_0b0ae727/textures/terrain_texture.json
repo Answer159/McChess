@@ -30,6 +30,9 @@
         },
         "gomoku_ore_gold": {
             "textures": "textures/blocks/golden_chess"
+        },
+        "gomoku_detonator_block": {
+            "textures": "textures/blocks/tnt_side"
         }
     }
 }
