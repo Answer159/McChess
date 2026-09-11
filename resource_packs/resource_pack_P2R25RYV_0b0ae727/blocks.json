@@ -34,5 +34,9 @@
     "wihzo:gomoku_ore_gold": {
         "textures": "gomoku_ore_gold",
         "sound": "stone"
+    },
+    "wihzo:gomoku_detonator_block": {
+        "textures": "gomoku_detonator_block",
+        "sound": "grass"
     }
 }

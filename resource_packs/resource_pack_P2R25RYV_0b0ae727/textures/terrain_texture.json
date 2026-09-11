@@ -24,6 +24,9 @@
         },
         "gomoku_ore_gold": {
             "textures": "textures/blocks/gold_ore"
+        },
+        "gomoku_detonator_block": {
+            "textures": "textures/blocks/tnt_side"
         }
     }
 }

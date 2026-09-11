@@ -1,0 +1,32 @@
+{
+    "format_version": "1.10.0",
+    "minecraft:block": {
+        "description": {
+            "identifier": "wihzo:gomoku_detonator_block"
+        },
+        "components": {
+            "minecraft:map_color": {
+                "color": "#B02E26"
+            },
+            "minecraft:destroy_time": {
+                "value": 0.5
+            },
+            "minecraft:explosion_resistance": {
+                "value": 100000
+            },
+            "netease:aabb": {
+                "collision": {
+                    "min": [0, 0, 0],
+                    "max": [1, 1, 1]
+                },
+                "clip": {
+                    "min": [0, 0, 0],
+                    "max": [1, 1, 1]
+                }
+            },
+            "netease:custom_tips": {
+                "value": "引信已点燃的雷管（挖掉可拆除！）"
+            }
+        }
+    }
+}

@@ -51,9 +51,11 @@ class GomokuServerSystem(ServerSystem):
 		self.debugPlaceCount = 0
 		# 资源存量计数（维持总量，上限见config.SpawnMaxCountDict）：
 		#   oreCountDict: 矿名 -> 现存方块数（重扫协程维护 + 刷出+1/挖碎-1 实时加减）
-		#   itemEntityMap: 掉落物entityId -> (物品名, 刷出时刻)——捡起/消失即剔除（OnEntityRemove）
+		#   itemExpireDict: 物品名 -> [到期时刻...]（自维护物品"在场"计数——
+		#   地上的/背包里未使用的都算在场；用掉立刻释放空位（OnItemConsumed），
+		#   到期未使用的按掉落物5分钟自然消失释放，见CountItemEntities）
 		self.oreCountDict = {}
-		self.itemEntityMap = {}
+		self.itemExpireDict = {}
 		self.recountCoroutine = None
 		self.loggedBlockUseEvent = False
 		self.loggedItemUseOnEvent = False
@@ -74,8 +76,6 @@ class GomokuServerSystem(ServerSystem):
 			config.ServerPlayerTryDestroyBlockEvent, self, self.OnPlayerTryDestroyBlock)
 		self.ListenForEvent(serverApi.GetEngineNamespace(), serverApi.GetEngineSystemName(),
 			config.PlayerAttackEntityEvent, self, self.OnPlayerAttack)
-		self.ListenForEvent(serverApi.GetEngineNamespace(), serverApi.GetEngineSystemName(),
-			config.EntityRemoveEvent, self, self.OnEntityRemove)
 		self.ListenForEvent(config.StartLogicModName, config.StartLogicServerSystemName,
 			config.StartLogicEvent, self, self.OnRoundStart)
 
@@ -93,8 +93,6 @@ class GomokuServerSystem(ServerSystem):
 			config.ServerPlayerTryDestroyBlockEvent, self, self.OnPlayerTryDestroyBlock)
 		self.UnListenForEvent(serverApi.GetEngineNamespace(), serverApi.GetEngineSystemName(),
 			config.PlayerAttackEntityEvent, self, self.OnPlayerAttack)
-		self.UnListenForEvent(serverApi.GetEngineNamespace(), serverApi.GetEngineSystemName(),
-			config.EntityRemoveEvent, self, self.OnEntityRemove)
 		self.UnListenForEvent(config.StartLogicModName, config.StartLogicServerSystemName,
 			config.StartLogicEvent, self, self.OnRoundStart)
 
@@ -123,8 +121,8 @@ class GomokuServerSystem(ServerSystem):
 			self.BuildBoard()
 		if self.boardBuilt:
 			self.ResetBoard()
-		# 回合开始时StartLogic会清掉全部掉落物（/kill @e[type=item]），物品存量计数同步清零
-		self.itemEntityMap = {}
+		# 回合开始时StartLogic会清掉全部掉落物（/kill @e[type=item]），自维护计数同步清零
+		self.itemExpireDict = {}
 		if not self.spawnCoroutines:
 			self.StartSpawners()
 
@@ -284,29 +282,26 @@ class GomokuServerSystem(ServerSystem):
 						{"itemName": itemName, "count": count, "auxValue": 0},
 						config.MainDimensionId, spawnPos)
 				if result:
-					# 返回值是掉落物entityId：登记进存量计数，被捡走/消失时剔除（OnEntityRemove）
-					self.itemEntityMap[result] = (itemName, time.time())
-					logger.info("[Gomoku] 物品刷新: {} x{} @ {} -> {} (存量{}/{})".format(
-						itemName, count, spawnPos, result, self.CountItemEntities(itemName), maxCount))
+					# 自维护计数：登记到期时刻（对齐掉落物5分钟自然消失，届时自动剔除）
+					self.itemExpireDict.setdefault(itemName, []).append(
+						time.time() + config.ItemDespawnSeconds)
+					logger.info("[Gomoku] 物品刷新: {} x{} @ {} (存量{}/{})".format(
+						itemName, count, spawnPos, self.CountItemEntities(itemName), maxCount))
 				else:
 					logger.warning("[Gomoku] 物品刷新失败: {} x{} @ {}".format(itemName, count, spawnPos))
 			except Exception as e:
 				logger.warning("[Gomoku] SpawnItemToLevel 失败: {}".format(e))
 
 	def CountItemEntities(self, itemName):
-		"""数当前地图上由刷新器产出的某物品掉落物数量；顺带剔除超龄条目
-		（掉落物ItemDespawnSeconds秒后自然消失，超龄却没收到移除事件=事件丢了，防计数虚高）"""
+		"""数某物品"当前在场（地上+背包里未使用）"的数量（自维护，不依赖引擎实体枚举）。
+		总数维持按"使用"计：刷出时登记（见SpawnAtRing），用掉立刻释放（OnItemConsumed），
+		到期未使用的按自然消失释放（原版掉落物5分钟消失，登记时对齐了到期时刻）。
+		玩家捡走不放空位（东西还在世上）；唯一偏差：囤在背包里超过5分钟不用的，
+		到期记录已被剔除，空位会提前释放（轻微多发，可忽略）"""
 		now = time.time()
-		for entityId in [eid for eid, (_, t) in self.itemEntityMap.items()
-				if now - t > config.ItemDespawnSeconds]:
-			del self.itemEntityMap[entityId]
-		return sum(1 for name, _ in self.itemEntityMap.values() if name == itemName)
-
-	def OnEntityRemove(self, args):
-		"""掉落物实体移除（被捡起/超时消失/回合开始清理）时从物品存量计数中剔除"""
-		entityId = args.get('id')
-		if entityId:
-			self.itemEntityMap.pop(entityId, None)
+		expires = [t for t in self.itemExpireDict.get(itemName, []) if t > now]
+		self.itemExpireDict[itemName] = expires
+		return len(expires)
 
 	def IterRingColumns(self, cx, cz, inner, outer, angleMin, angleMax):
 		"""枚举环形区域内的整数(x,z)列（角度约定与SpawnAtRing一致：0=北/+Z，顺时针）"""
@@ -356,7 +351,10 @@ class GomokuServerSystem(ServerSystem):
 						yield -1  # 分帧
 				passCounts[blockName] = passCounts.get(blockName, 0) + count
 				self.oreCountDict[blockName] = passCounts[blockName]
-			logger.info("[Gomoku] 矿石存量重扫: {}".format(self.oreCountDict))
+			# 物品存量顺带扫一遍打日志（矿石走实时计数+周期重扫，物品走即时扫描）
+			itemNames = sorted(set(c['itemName'] for c in config.SpawnConfigList if c['type'] == 'item'))
+			itemCounts = {name: self.CountItemEntities(name) for name in itemNames}
+			logger.info("[Gomoku] 存量重扫: 矿石{} 物品{}".format(self.oreCountDict, itemCounts))
 			yield -config.RecountIntervalSeconds * 30
 
 	def FindSurfaceY(self, x, z):
@@ -402,9 +400,20 @@ class GomokuServerSystem(ServerSystem):
 		if None in pos or not playerId:
 			logger.warning("[Gomoku] 物品使用事件字段异常: {}".format(args))
 			return
-		# 只处理棋子物品：镐/剑等右键基座无动作
+		# 只处理棋子/墨水/雷管物品：镐/剑等右键基座无动作
 		itemCfg = config.ItemTable.get(itemName)
-		if not itemCfg or itemCfg.get('type') != 'piece':
+		if not itemCfg:
+			return
+		itemType = itemCfg.get('type')
+		if itemType == 'ink':
+			# 手持墨水右键棋石 -> 转化为己方颜色（目标判定见HandleInkUse）
+			self.HandleInkUse(playerId, pos)
+			return
+		if itemType == 'bomb':
+			# 手持雷管右键棋盘（基座或棋石均可）-> 引爆清子（见HandleBombUse）
+			self.HandleBombUse(playerId, pos)
+			return
+		if itemType != 'piece':
 			return
 		# 点击位置须是棋盘基座（棋盘9x9范围内y=基座层的方块只有基座，直接用范围判定）
 		if not self.IsOnBoard(pos):
@@ -478,6 +487,115 @@ class GomokuServerSystem(ServerSystem):
 			result = PlaceResult(True, player=player, state=self.board.state)
 		return result
 
+	def HandleInkUse(self, playerId, pos):
+		"""手持墨水右键棋盘上的棋石 -> 转化为己方颜色（墨水耐久1，用一次即碎）。
+		只对敌方黑/白棋石生效：金棋子无阵营不可转化，己方棋石无需转化。
+		硬化属性保留（墨水只换颜色不换材质）；引擎侧先删旧子再落新子（同格改值），
+		转化补齐五连同 normal 落子一样判胜"""
+		x1, y1, z1, x2, y2, z2 = self.GetBoardBounds()
+		if not (x1 <= pos[0] <= x2 and z1 <= pos[2] <= z2 and pos[1] == y1 + 1):
+			return  # 点击的不是棋盘落子层（与HandleStoneBreak同判定）
+		if self.board.state != STATE_PLAYING:
+			self.Announce("§c对局已结束，请等待下一轮")
+			return
+		side = self.GetPlayerSide(playerId)
+		if side is None:
+			self.Announce("§c使用墨水需要先加入队伍")
+			return
+		blockName = self.GetBlockName(pos)
+		stoneSide = config.StoneSideDict.get(blockName) if blockName else None
+		if stoneSide is None:
+			return  # 落子层但不是棋石（正常不会有），静默忽略
+		if stoneSide == 'gold':
+			self.Announce("§c金棋子无阵营，墨水对它无效")
+			return
+		if stoneSide == side:
+			self.Announce("§c这是己方棋子，不需要墨水")
+			return
+		if not self.ConsumeCarriedItem(playerId):
+			return
+		# 己方棋石（敌方硬化棋石转化后保留硬化：挖掘更久的属性跟着格子走）
+		hardened = blockName in (config.StoneBlackHardenedName, config.StoneWhiteHardenedName)
+		if side == 'black':
+			stoneName = config.StoneBlackHardenedName if hardened else config.StoneBlackName
+			player = BLACK
+		else:
+			stoneName = config.StoneWhiteHardenedName if hardened else config.StoneWhiteName
+			player = WHITE
+		bx, by = self.WorldToBoard(pos)
+		self.RunCommand('/setblock {} {} {} {}'.format(pos[0], pos[1], pos[2], stoneName))
+		# 引擎同步：remove+place（remove失败=计数脱同步，place会自愈补上该格）
+		self.board.remove(bx, by)
+		result = self.PlaceInEngine(bx, by, player)
+		self.Announce("§5一瓶墨水泼下，§6{}§5的一枚棋子被转化了！".format(
+			config.SideNameDict.get(stoneSide, stoneSide)))
+		logger.info("[Gomoku] 墨水转化: {} {} -> {} ({})".format(pos, blockName, stoneName, playerId))
+		if result.state == STATE_WON:
+			self.OnGameEnd(result.winning_player, result.winning_lines)
+		elif result.state == STATE_DRAW:
+			self.OnGameEnd(None, [])
+
+	def HandleBombUse(self, playerId, pos):
+		"""手持爆炸雷管右键棋盘（基座或棋石均可）-> 像原生方块一样贴着点击处
+		摆出一个已点燃的雷管方块（TNT外观），BombFuseSeconds秒后引爆（见BombFuse）。
+		摆放不替换任何方块：点击列的落子层(y1+1)有棋石 -> 叠在棋石上方(y1+2)；
+		空 -> 直接放在落子层。爆炸清以雷管方块为中心的立方体
+		（BombBlastRange=3即3x3x3）内的全部棋石，不分敌我、不分颜色
+		（金棋子照炸）；只清棋石，基座与地形无损（不留坑）。雷管耐久1"""
+		x1, y1, z1, x2, y2, z2 = self.GetBoardBounds()
+		if not (x1 <= pos[0] <= x2 and z1 <= pos[2] <= z2 and pos[1] in (y1, y1 + 1, y1 + 2)):
+			return  # 点击目标不在棋盘上，不响应
+		if self.board.state != STATE_PLAYING:
+			self.Announce("§c对局已结束，请等待下一轮")
+			return
+		# 摆放位置：优先落子层；该列落子层被棋石占着就叠上去（不替换）
+		bombPos = (pos[0], y1 + 1, pos[2])
+		if self.GetBlockName(bombPos) in config.StoneBlockNameSet:
+			bombPos = (pos[0], y1 + 2, pos[2])
+		if self.GetBlockName(bombPos) == config.DetonatorBlockName:
+			self.Announce("§c这里已经有一根点燃的雷管了")
+			return
+		if not self.ConsumeCarriedItem(playerId):
+			return
+		self.RunCommand('/setblock {} {} {} {}'.format(bombPos[0], bombPos[1], bombPos[2], config.DetonatorBlockName))
+		self.Announce("§c引信已点燃，快跑！")
+		logger.info("[Gomoku] 雷管已放置: {} 点击{} ({})".format(bombPos, pos, playerId))
+		CoroutineMgr.StartCoroutine(self.BombFuse(bombPos))
+
+	def BombFuse(self, bombPos):
+		"""雷管引信协程：摆出方块后等BombFuseSeconds秒。到点时雷管方块仍在 ->
+		引爆：清以雷管为中心的BombBlastRange立方体（3=3x3x3，各轴向±1）内
+		的全部棋石+雷管自身，同步释放引擎格；方块没了 -> 被挖掉拆除/
+		回合重置清除，静默取消。爆炸只删子不判胜（删子凑不成五连）"""
+		yield -config.BombFuseSeconds * 30
+		if self.GetBlockName(bombPos) != config.DetonatorBlockName:
+			logger.info("[Gomoku] 雷管在引爆前被拆除/清除: {}".format(bombPos))
+			return
+		removed = 0
+		seenNames = set()  # 诊断用：扫描到的方块名（炸空时打日志排查名字不匹配）
+		half = config.BombBlastRange // 2
+		for dx in range(-half, half + 1):
+			for dz in range(-half, half + 1):
+				for dy in range(-half, half + 1):
+					cellPos = (bombPos[0] + dx, bombPos[1] + dy, bombPos[2] + dz)
+					if cellPos == bombPos:
+						continue  # 雷管自身最后单独清
+					blockName = self.GetBlockName(cellPos)
+					if blockName:
+						seenNames.add(blockName)
+					if blockName not in config.StoneBlockNameSet:
+						continue  # 只清棋石：空格/基座/地形/异常查询都不动
+					self.RunCommand('/setblock {} {} {} air'.format(*cellPos))
+					bx, by = self.WorldToBoard(cellPos)
+					self.board.remove(bx, by)  # 超界/已空返回not ok，忽略即可
+					removed += 1
+		self.RunCommand('/setblock {} {} {} air'.format(*bombPos))
+		if removed:
+			self.Announce("§c轰！爆炸雷管炸掉了{}枚棋子".format(removed))
+		else:
+			self.Announce("§e轰！爆炸雷管炸了个空（范围内没有棋子）")
+		logger.info("[Gomoku] 雷管引爆: {} 炸除{}枚 扫描到: {}".format(bombPos, removed, seenNames))
+
 	def OnPlayerTryDestroyBlock(self, args):
 		"""左键挖掘入口（挖穿前触发）：矿->采集（普通/硬化矿需对应镐，金矿徒手可挖）；
 		棋盘棋石->挖掉即销毁并释放引擎格子（普通3秒/硬化10秒由方块destroy_time控制）。
@@ -491,6 +609,10 @@ class GomokuServerSystem(ServerSystem):
 		if blockName not in config.OrePieceItemDict:
 			if blockName in config.StoneBlockNameSet:
 				self.HandleStoneBreak(args)
+			elif blockName == config.DetonatorBlockName:
+				# 引爆前把雷管方块挖掉=拆除（销毁无掉落）；引信协程到点发现方块没了会自行取消
+				args['spawnResources'] = False
+				self.Announce("§e一枚雷管被及时拆除了")
 			return
 		# 矿被挖碎（无论工具对错，方块都会消失）：存量计数-1
 		self.oreCountDict[blockName] = self.oreCountDict.get(blockName, 0) - 1
@@ -613,6 +735,17 @@ class GomokuServerSystem(ServerSystem):
 	# ---------- 物品/方块操作（写法均对照官方模板：neteaseBattle的GetPlayerEngineItemData、
 	# CustomDimensionTemplate的consumeActiveItem、TutorialGame的SpawnItemToPlayerInv） ----------
 
+	def GetBlockName(self, pos):
+		"""查询主世界某坐标的方块名；查询失败返回None（调用方按无信息处理）"""
+		try:
+			blockInfoComp = serverApi.GetEngineCompFactory().CreateBlockInfo(config.MainDimensionId)
+			blockDict = blockInfoComp.GetBlockNew(pos, config.MainDimensionId)
+			if blockDict:
+				return blockDict.get('name', '')
+		except Exception as e:
+			logger.warning("[Gomoku] GetBlockName 失败: {}".format(e))
+		return None
+
 	def GetCarriedItemName(self, playerId):
 		"""读取玩家手持物品名；API不可用返回None，空手返回''"""
 		try:
@@ -630,17 +763,35 @@ class GomokuServerSystem(ServerSystem):
 			return None
 
 	def ConsumeCarriedItem(self, playerId):
-		"""销毁手持物品（镐/剑耐久1、棋子落子消耗均走这里）：count-1后写回手持位"""
+		"""销毁手持物品（镐/剑耐久1、棋子落子/墨水/雷管消耗均走这里）：count-1后写回手持位。
+		消耗成功时同步释放该物品的刷新空位——总数维持按"使用"计：地上的/背包里的都算在场，
+		只有用掉（这里）或自然消失（见CountItemEntities的到期剔除）才补刷"""
 		try:
 			itemComp = serverApi.CreateComponent(playerId, config.Minecraft, config.ItemComponent)
 			carriedItem = itemComp.GetPlayerItem(serverApi.GetMinecraftEnum().ItemPosType.CARRIED, 0)
 			if not carriedItem:
 				return False
+			itemName = carriedItem.get('newItemName') or carriedItem.get('itemName') or ''
 			carriedItem['count'] = carriedItem.get('count', 1) - 1
-			return itemComp.SpawnItemToPlayerCarried(carriedItem, playerId)
+			if itemComp.SpawnItemToPlayerCarried(carriedItem, playerId):
+				self.OnItemConsumed(itemName)
+				return True
+			return False
 		except Exception as e:
 			logger.warning("[Gomoku] ConsumeCarriedItem 失败: {}".format(e))
 			return False
+
+	def OnItemConsumed(self, itemName):
+		"""物品被用掉（耐久1道具使用/棋子落子）时立刻释放一个刷新空位，下个刷新间隔即可补。
+		该物品不是刷新器产出（如挖矿发放的棋子）时没有对应记录，跳过即可（不影响计数下限）"""
+		if not itemName:
+			return
+		expires = self.itemExpireDict.get(itemName)
+		if expires:
+			# 条目之间无差别，移除任意一条=该单位退场
+			expires.pop()
+			logger.info("[Gomoku] 物品消耗，释放空位: {} (存量{})".format(
+				itemName, len(expires)))
 
 	def GiveItemToPlayer(self, playerId, itemName):
 		"""将物品给到玩家背包。组件必须用playerId创建（对照官方模板全部用法，

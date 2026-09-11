@@ -19,6 +19,12 @@
         },
         "gomoku_piece_gold": {
             "textures": "textures/blocks/raw_gold_block"
+        },
+        "gomoku_ink": {
+            "textures": "textures/blocks/obsidian"
+        },
+        "gomoku_detonator": {
+            "textures": "textures/blocks/redstone_block"
         }
     }
 }
