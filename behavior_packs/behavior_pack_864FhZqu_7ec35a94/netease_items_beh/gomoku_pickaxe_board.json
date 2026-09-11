@@ -1,0 +1,16 @@
+{
+    "format_version": "1.10",
+    "minecraft:item": {
+        "description": {
+            "identifier": "wihzo:gomoku_pickaxe_board",
+            "register_to_create_menu": true,
+            "category": "Equipment"
+        },
+        "components": {
+            "minecraft:max_stack_size": 1,
+            "netease:customtips": {
+                "value": "右键棋盘基座拆掉一格（该格本局无法落子），新一局自动重铺修复；只能拆棋盘，用一次即碎"
+            }
+        }
+    }
+}

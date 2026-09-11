@@ -1,6 +1,10 @@
 item.wihzo:gomoku_piece_normal.name=普通棋子
 item.wihzo:gomoku_piece_hardened.name=硬化棋子
 item.wihzo:gomoku_piece_gold.name=金棋子
+item.wihzo:gomoku_piece_square.name=方阵棋子
+item.wihzo:gomoku_piece_trap.name=陷阱棋子
 item.wihzo:gomoku_pickaxe_stone.name=石镐
 item.wihzo:gomoku_pickaxe_iron.name=铁镐
+item.wihzo:gomoku_pickaxe_board.name=破盘镐
+item.wihzo:gomoku_swap.name=换位符
 item.wihzo:execution_sword.name=处决剑

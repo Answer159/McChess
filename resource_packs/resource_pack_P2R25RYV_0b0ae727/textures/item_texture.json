@@ -8,6 +8,9 @@
         "gomoku_pickaxe_iron": {
             "textures": "textures/items/iron_pickaxe"
         },
+        "gomoku_pickaxe_board": {
+            "textures": "textures/items/diamond_pickaxe"
+        },
         "execution_sword": {
             "textures": "textures/items/execution_sword"
         },
@@ -20,11 +23,20 @@
         "gomoku_piece_gold": {
             "textures": "textures/blocks/golden_chess"
         },
+        "gomoku_piece_square": {
+            "textures": "textures/blocks/square_chess"
+        },
+        "gomoku_piece_trap": {
+            "textures": "textures/blocks/trap_chess"
+        },
         "gomoku_ink": {
             "textures": "textures/blocks/obsidian"
         },
         "gomoku_detonator": {
             "textures": "textures/blocks/redstone_block"
+        },
+        "gomoku_swap": {
+            "textures": "textures/items/ender_pearl"
         }
     }
 }

@@ -1,0 +1,12 @@
+{
+    "format_version": "1.10",
+    "minecraft:item": {
+        "description": {
+            "identifier": "wihzo:gomoku_pickaxe_board",
+            "category": "Equipment"
+        },
+        "components": {
+            "minecraft:icon": "gomoku_pickaxe_board"
+        }
+    }
+}

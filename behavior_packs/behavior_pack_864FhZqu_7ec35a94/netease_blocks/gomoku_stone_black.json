@@ -9,7 +9,7 @@
                 "color": "#1A1A1A"
             },
             "minecraft:destroy_time": {
-                "value": 3
+                "value": 6
             },
             "minecraft:explosion_resistance": {
                 "value": 100000

@@ -81,8 +81,12 @@ TickingAreaRadius = 4
 # ---------------------- 自定义方块（名字须与netease_blocks/下JSON一致） ----------------------
 # 棋盘基座
 ChessBaseBlockName = "wihzo:McChess_ChessBase"
-# 已落子的棋石（颜色=落子方队伍；普通/硬化各有独立贴图——硬化版带金属包边+铆钉标记，
-# 且硬化版destroy_time更大；挖掉即销毁无掉落，并释放引擎对应格子）
+# 已落子的棋石（颜色=落子方队伍；普通/硬化各有独立贴图——硬化版带金属包边+铆钉标记）。
+# 挖掘门控（脚本层，见OnPlayerTryDestroyBlock）：普通棋石须石镐、硬化棋石须铁镐、
+# 金棋石任何镐都挖不动（只能雷管炸）。
+# 盘上挖棋石耗时（destroy_time：普通6s/硬化10s）刻意长于盘外采同系矿（3s/5s）——
+# 拆对手的子比抢矿更费时，削弱互相拆家的收益。
+# 挖掉即销毁无掉落，并释放引擎对应格子
 StoneBlackName = "wihzo:gomoku_stone_black"
 StoneWhiteName = "wihzo:gomoku_stone_white"
 StoneBlackHardenedName = "wihzo:gomoku_stone_black_hardened"
@@ -107,23 +111,31 @@ StoneSideDict = {
 # 资源包netease_items_res/下的JSON identifier一致） ----------------------
 PickaxeStoneName = "wihzo:gomoku_pickaxe_stone"
 PickaxeIronName = "wihzo:gomoku_pickaxe_iron"
+PickaxeBoardName = "wihzo:gomoku_pickaxe_board"
 ExecutionSwordName = "wihzo:execution_sword"
 PieceItemNormal = "wihzo:gomoku_piece_normal"
 PieceItemHardened = "wihzo:gomoku_piece_hardened"
 PieceItemGold = "wihzo:gomoku_piece_gold"
+PieceItemSquare = "wihzo:gomoku_piece_square"
+PieceItemTrap = "wihzo:gomoku_piece_trap"
 InkItemName = "wihzo:gomoku_ink"
 DetonatorItemName = "wihzo:gomoku_detonator"
+SwapItemName = "wihzo:gomoku_swap"
 
 # ---------------------- 道具表 ----------------------
 # 所有道具的统一定义，后续开发新道具只加这里，系统按 type 分派行为：
 #   name:       短显示名（播报用；物品JSON里的display_name是带说明的详细版）
-#   type:       'piece' 棋子 / 'pickaxe' 采集镐 / 'weapon' 武器 / 'ink' 转化墨水 / 'bomb' 爆炸雷管
+#   type:       'piece' 棋子 / 'pickaxe' 采集镐 / 'weapon' 武器 / 'ink' 转化墨水 / 'bomb' 爆炸雷管 /
+#               'boardpick' 破盘镐 / 'swap' 换位符
 #   consumable: 使用一次即销毁（耐久1）
-#   piece 专用:  fromOre 产出该棋子的矿 / wildcard 万能挡子（金棋子，落子不分颜色、只挡线不获胜）
+#   piece 专用:  fromOre 产出该棋子的矿 / wildcard 万能挡子（金棋子，落子不分颜色、只挡线不获胜）/
+#               square 方阵棋子（2x2铺子：点击格为左上角，越界/已占格忽略，见HandleSquarePlace）/
+#               trap 陷阱棋子（落子外观=己方普通棋石，被挖毁时炸死范围内玩家，见DetonateTrap）
 #   pickaxe专用: mineOre 能采集的矿（各挖各的）
 #   weapon 专用: damage 攻击玩家造成的伤害（缺省用DefaultWeaponDamage）
 #   ink 专用:    无额外字段（转化目标=右键到的敌方棋石，见HandleInkUse）
 #   bomb 专用:   无额外字段（爆炸范围见BombBlastRange，右键棋盘引爆）
+#   boardpick专用: 无额外字段（右键拆棋盘基座一格，见HandleBoardPickUse；只拆基座，别的都不响应）
 ItemTable = {
 	PieceItemNormal: {
 		"name": "普通棋子", "type": "piece",
@@ -138,6 +150,12 @@ ItemTable = {
 		"name": "金棋子", "type": "piece", "wildcard": True,
 		"fromOre": "wihzo:gomoku_ore_gold",
 	},
+	PieceItemSquare: {
+		"name": "方阵棋子", "type": "piece", "square": True,
+	},
+	PieceItemTrap: {
+		"name": "陷阱棋子", "type": "piece", "trap": True,
+	},
 	PickaxeStoneName: {
 		"name": "石镐", "type": "pickaxe", "consumable": True,
 		"mineOre": "wihzo:gomoku_ore_normal",
@@ -145,6 +163,9 @@ ItemTable = {
 	PickaxeIronName: {
 		"name": "铁镐", "type": "pickaxe", "consumable": True,
 		"mineOre": "wihzo:gomoku_ore_hardened",
+	},
+	PickaxeBoardName: {
+		"name": "破盘镐", "type": "boardpick", "consumable": True,
 	},
 	ExecutionSwordName: {
 		"name": "处决剑", "type": "weapon", "consumable": True,
@@ -156,6 +177,9 @@ ItemTable = {
 	DetonatorItemName: {
 		"name": "爆炸雷管", "type": "bomb", "consumable": True,
 	},
+	SwapItemName: {
+		"name": "换位符", "type": "swap", "consumable": True,
+	},
 }
 
 # 雷管专用：爆炸范围 = 以雷管方块为中心的立方体边长（3=3x3x3，各轴向±1），
@@ -166,6 +190,11 @@ BombFuseSeconds = 3
 
 # 武器没写damage时的兜底伤害
 DefaultWeaponDamage = 9999
+
+# 陷阱棋子：棋石被挖毁时的爆炸半径（格，选择器r参数）。只炸玩家不毁棋石/棋盘/地形
+# （与雷管正相反：雷管只毁棋不伤人）。★须≥挖掘触手距离（约4格），
+# 保证亲手挖陷阱的玩家自己也在爆炸半径内
+TrapKillRadius = 4
 
 # 派生表（由道具表自动生成，勿手改）
 # 镐 -> 可采集的矿
@@ -218,6 +247,10 @@ SpawnMaxCountDict = {
 	# 直刷棋子物品（道具不在此表——道具走分级共用上限，见ItemTierDict）
 	PieceItemNormal: 5,
 	PieceItemHardened: 3,
+	# 方阵棋子：一次铺四子的节奏型大件，地图上至多1枚
+	PieceItemSquare: 1,
+	# 陷阱棋子：阴人专用，地图上至多1枚
+	PieceItemTrap: 1,
 }
 # 矿石全环重扫间隔（秒）：重扫分帧进行，每帧查ScanColumnsPerTick列，避免单tick卡顿
 RecountIntervalSeconds = 30
@@ -249,6 +282,10 @@ SpawnConfigList = [
 	{"type": "item", "itemName": PieceItemNormal, "radius": (5, 9), "angleRange": (0, 360), "interval": 3},
 	# 硬化棋子物品：中环直接掉落
 	{"type": "item", "itemName": PieceItemHardened, "radius": (9, 14), "angleRange": (0, 360), "interval": 15},
+	# 方阵棋子：中环偏外，低频直刷（一次铺四子，节奏价值极高故稀有）
+	{"type": "item", "itemName": PieceItemSquare, "radius": (14, 20), "angleRange": (0, 360), "interval": 45},
+	# 陷阱棋子：中环偏外，极低频直刷（存在感越低越有效）
+	{"type": "item", "itemName": PieceItemTrap, "radius": (14, 20), "angleRange": (0, 360), "interval": 60},
 	# 道具（镐/剑/墨水/雷管）不走本表——按等级走ItemTierDict的分级刷新
 ]
 
@@ -268,12 +305,12 @@ ItemTierDict = {
 	},
 	"mid": {
 		"name": "中级道具",
-		"items": [InkItemName, DetonatorItemName],
+		"items": [InkItemName, DetonatorItemName, PickaxeBoardName],
 		"radius": (10, 18), "interval": 5,
 	},
 	"high": {
 		"name": "高级道具",
-		"items": [ExecutionSwordName],
+		"items": [ExecutionSwordName, SwapItemName],
 		"radius": (18, 28), "interval": 10,
 	},
 }
@@ -287,3 +324,12 @@ TierMaxCountDict = {
 # ---------------------- 胜利条件 ----------------------
 # 连珠数（几子连珠获胜）
 WinRowLength = 5
+
+# ---------------------- 比分记分牌（告示牌） ----------------------
+# 比分告示牌的世界坐标列表：编辑器里摆好告示牌后把坐标填进来（空列表=功能关闭）。
+# 与BoardCenter同理：运行时读不到预设坐标，只能走config常量；牌须是原版告示牌方块
+# （standing_sign/wall_sign均可），坐标=告示牌方块本身所在的格子。
+# 所有牌显示同一内容：黑方/白方跨局累计胜场。计分就存在牌面文本里（随世界存档持久，
+# 重进服务器不清零）；第一块牌被拆掉或文本被改坏（解析不出数字）则从0:0重新计。
+# 临时改分=直接改牌面文字，保持"黑方 N 胜"格式即可被读回
+ScoreSignPosList = []

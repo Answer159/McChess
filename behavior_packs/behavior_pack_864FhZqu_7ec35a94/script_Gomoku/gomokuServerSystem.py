@@ -57,6 +57,9 @@ class GomokuServerSystem(ServerSystem):
 		self.oreCountDict = {}
 		self.itemExpireDict = {}
 		self.recountCoroutine = None
+		# 陷阱棋子的雷区登记：{(bx, by) 引擎坐标}。落在这些格子上的棋石被挖毁时引爆
+		# （只炸玩家不毁棋盘，见DetonateTrap）；外观与普通棋石零差别，雷只存在这里
+		self.trapCells = set()
 		# 节流播报的上次播报时刻（按(玩家,类型)键，防刷屏）
 		self.announceThrottleTime = {}
 		self.loggedBlockUseEvent = False
@@ -131,6 +134,10 @@ class GomokuServerSystem(ServerSystem):
 		if not self.boardBuilt:
 			self.BuildBoard()
 		if self.boardBuilt:
+			# 重铺基座层：修复上一局被破盘镐拆掉的格子（/fill默认replace整层重铺，
+			# 对完好的基座无副作用；棋盘上方棋石的清理由ResetBoard负责）
+			x1, y1, z1, x2, y2, z2 = self.GetBoardBounds()
+			self.RunCommand('/fill {} {} {} {} {} {} {}'.format(x1, y1, z1, x2, y2, z2, config.ChessBaseBlockName))
 			self.ResetBoard()
 		# 回合开始时StartLogic会清掉全部掉落物（/kill @e[type=item]），自维护计数同步清零
 		self.itemExpireDict = {}
@@ -173,6 +180,8 @@ class GomokuServerSystem(ServerSystem):
 		x1, y1, z1, x2, y2, z2 = self.GetBoardBounds()
 		self.RunCommand('/fill {} {} {} {} {} {} air 0 replace'.format(x1, y1 + 1, z1, x2, y2 + 1, z2))
 		self.board.reset(config.BoardSize, config.BoardSize, enforce_turn=False)
+		# 棋盘清空，上一局埋的陷阱全部作废（雷跟着棋局走，不跨局残留）
+		self.trapCells = set()
 
 	def IsOnBoard(self, pos):
 		x1, y1, z1, x2, y2, z2 = self.GetBoardBounds()
@@ -443,7 +452,7 @@ class GomokuServerSystem(ServerSystem):
 		if None in pos or not playerId:
 			logger.warning("[Gomoku] 物品使用事件字段异常: {}".format(args))
 			return
-		# 只处理棋子/墨水/雷管物品：镐/剑等右键基座无动作
+		# 只处理棋子/墨水/雷管/破盘镐/换位符物品：石镐/铁镐/剑等右键无动作
 		itemCfg = config.ItemTable.get(itemName)
 		if not itemCfg:
 			return
@@ -455,6 +464,14 @@ class GomokuServerSystem(ServerSystem):
 		if itemType == 'bomb':
 			# 手持雷管右键棋盘（基座或棋石均可）-> 引爆清子（见HandleBombUse）
 			self.HandleBombUse(playerId, pos)
+			return
+		if itemType == 'boardpick':
+			# 手持破盘镐右键棋盘基座 -> 拆掉该格（见HandleBoardPickUse）
+			self.HandleBoardPickUse(playerId, pos)
+			return
+		if itemType == 'swap':
+			# 手持换位符右键任意方块 -> 与最近敌方玩家互换位置（见HandleSwapUse）
+			self.HandleSwapUse(playerId)
 			return
 		if itemType != 'piece':
 			return
@@ -475,6 +492,11 @@ class GomokuServerSystem(ServerSystem):
 		bx, by = self.WorldToBoard(pos)
 		if self.board.state != STATE_PLAYING:
 			self.Announce("§c对局已结束，请等待下一轮")
+			return
+		# 方阵棋子（2x2铺子）：占位规则不同（四格内部分合法即可落），走独立流程
+		itemCfg = config.ItemTable.get(carriedItem)
+		if itemCfg and itemCfg.get('square'):
+			self.HandleSquarePlace(playerId, bx, by, side)
 			return
 		if self.board.get(bx, by) != EMPTY:
 			self.Announce("§c此处已有棋子")
@@ -511,10 +533,61 @@ class GomokuServerSystem(ServerSystem):
 		self.RunCommand('/setblock {} {} {} {}'.format(stonePos[0], stonePos[1], stonePos[2], stoneName))
 		result = self.PlaceInEngine(bx, by, player)
 		logger.info("[Gomoku] 落子: {} {} {}".format(stonePos, player, carriedItem))
+		if itemCfg.get('trap') and result.ok:
+			# 陷阱棋子：落下的普通棋石外观无差别，雷只登记在trapCells（被挖毁时引爆）
+			self.trapCells.add((bx, by))
+			logger.info("[Gomoku] 陷阱已埋设: 引擎坐标{}".format((bx, by)))
 		if result.state == STATE_WON:
 			self.OnGameEnd(result.winning_player, result.winning_lines)
 		elif result.state == STATE_DRAW:
 			self.OnGameEnd(None, [])
+
+	def HandleSquarePlace(self, playerId, bx, by, side):
+		"""方阵棋子落子：以点击格为2x2左上角，向 +X/+Z 方向铺四枚己方普通棋子。
+		越界或已占的格子忽略，只落合法格；四格全不合法则不消耗、播报原因。
+		颜色=落子方队伍（与普通棋子一致），消耗一次即铺下全部合法格；
+		中途成五/满盘立即结算，剩余格子不再落。方阵棋子占用MaxCarriedPieces一个名额"""
+		if side is None:
+			self.Announce("§c落子需要先加入队伍")
+			return
+		if config.DebugSoloAlternateSides:
+			# 调试模式（config开关）：单人无法测双方，落子黑白交替
+			side = 'white' if self.debugPlaceCount % 2 == 0 else 'black'
+			self.debugPlaceCount += 1
+		# 四个目标格（左上/右上/左下/右下），先按 棋盘内+空格 过滤
+		legalCells = []
+		for dx, dy in ((0, 0), (1, 0), (0, 1), (1, 1)):
+			cx, cy = bx + dx, by + dy
+			if self.board.in_bounds(cx, cy) and self.board.get(cx, cy) == EMPTY:
+				legalCells.append((cx, cy))
+		if not legalCells:
+			self.Announce("§c2x2范围内没有可落子的空格")
+			return
+		if not self.ConsumeCarriedItem(playerId):
+			return
+		if side == 'black':
+			stoneName, player = config.StoneBlackName, BLACK
+		else:
+			stoneName, player = config.StoneWhiteName, WHITE
+		placed = 0
+		for cx, cy in legalCells:
+			stonePos = self.BoardToWorld(cx, cy)
+			self.RunCommand('/setblock {} {} {} {}'.format(stonePos[0], stonePos[1], stonePos[2], stoneName))
+			result = self.PlaceInEngine(cx, cy, player)
+			if not result.ok:
+				# 引擎拒收（正常已被前置过滤，竞态兜底）：撤掉刚放的方块
+				self.RunCommand('/setblock {} {} {} air'.format(stonePos[0], stonePos[1], stonePos[2]))
+				continue
+			placed += 1
+			logger.info("[Gomoku] 方阵落子: {} {}".format(stonePos, player))
+			if result.state == STATE_WON:
+				self.OnGameEnd(result.winning_player, result.winning_lines)
+				break  # 对局已结束，剩余格子不再落（引擎也会拒绝）
+			if result.state == STATE_DRAW:
+				self.OnGameEnd(None, [])
+				break
+		if placed and self.board.state == STATE_PLAYING:
+			self.Announce("§e方阵棋子铺下了{}枚棋子".format(placed))
 
 	def PlaceInEngine(self, bx, by, player):
 		"""落子写入引擎。金棋子用第三方棋子值占位（不与黑白匹配，天然阻断连线）；
@@ -534,7 +607,8 @@ class GomokuServerSystem(ServerSystem):
 		"""手持墨水右键棋盘上的棋石 -> 转化为己方颜色（墨水耐久1，用一次即碎）。
 		只对敌方黑/白棋石生效：金棋子无阵营不可转化，己方棋石无需转化。
 		硬化属性保留（墨水只换颜色不换材质）；引擎侧先删旧子再落新子（同格改值），
-		转化补齐五连同 normal 落子一样判胜"""
+		转化补齐五连同 normal 落子一样判胜。陷阱雷跟着格子走：被转化的陷阱棋石
+		换色后仍是陷阱，挖它照样炸（trapCells不因转化而清）"""
 		x1, y1, z1, x2, y2, z2 = self.GetBoardBounds()
 		if not (x1 <= pos[0] <= x2 and z1 <= pos[2] <= z2 and pos[1] == y1 + 1):
 			return  # 点击的不是棋盘落子层（与HandleStoneBreak同判定）
@@ -631,6 +705,7 @@ class GomokuServerSystem(ServerSystem):
 					self.RunCommand('/setblock {} {} {} air'.format(*cellPos))
 					bx, by = self.WorldToBoard(cellPos)
 					self.board.remove(bx, by)  # 超界/已空返回not ok，忽略即可
+					self.trapCells.discard((bx, by))  # 被炸掉的陷阱棋石=远程拆除，不引爆（链式殉爆不做）
 					removed += 1
 		self.RunCommand('/setblock {} {} {} air'.format(*bombPos))
 		if removed:
@@ -639,9 +714,90 @@ class GomokuServerSystem(ServerSystem):
 			self.Announce("§e轰！爆炸雷管炸了个空（范围内没有棋子）")
 		logger.info("[Gomoku] 雷管引爆: {} 炸除{}枚 扫描到: {}".format(bombPos, removed, seenNames))
 
+	def HandleBoardPickUse(self, playerId, pos):
+		"""手持破盘镐右键棋盘基座 -> 拆掉该格基座：本局该格无法落子（没有基座方块可
+		右键），格子里的浮空棋石不受影响；新一局开始时基座整层重铺，拆掉的格子自动修复
+		（见OnRoundStart）。基座destroy_time=100000，左键长挖到不了挖穿事件，故走
+		右键即拆（与墨水/雷管同一条ServerItemUseOnEvent通道——物品不带netease:weapon
+		组件，带该组件的工具类物品右键不发使用事件，曾导致本道具右键无效）。
+		只能拆基座——右键矿/棋石/地形/已拆的洞一律不响应也不消耗。
+		耐久1，拆一次即碎"""
+		blockName = self.GetBlockName(pos)
+		onBoard = self.IsOnBoard(pos)
+		logger.info("[Gomoku] 破盘镐右键: pos={} blockName={} onBoard={}".format(pos, blockName, onBoard))
+		if not onBoard or blockName != config.ChessBaseBlockName:
+			# 不在棋盘/不是基座（矿/棋石/地形/已拆的洞）：节流提示，不响应不消耗
+			self.AnnounceThrottled(playerId, 'boardPick', "§c破盘镐只能右键棋盘基座来拆格")
+			return
+		if self.board.state != STATE_PLAYING:
+			self.Announce("§c对局未在进行中，破盘镐没有目标（新一局基座会重铺）")
+			return
+		if not self.ConsumeCarriedItem(playerId):
+			return
+		self.RunCommand('/setblock {} {} {} air'.format(pos[0], pos[1], pos[2]))
+		self.Announce("§c破盘镐拆掉了一格棋盘基座，该格本局无法落子（新一局自动修复）")
+		logger.info("[Gomoku] 破盘镐拆格: {} ({})".format(pos, playerId))
+
+	def HandleSwapUse(self, playerId):
+		"""换位符：与最近的敌方玩家互换位置（右键任意方块触发，位置无关）。
+		目标=距离最近的不同阵营玩家（TeamMod缺失/本方无阵营时退化为任意其他玩家）；
+		双方坐标先一起读、再一起写，任一侧传送失败则回滚，失败不消耗道具。
+		SetPos行为与/tp一致（官方文档），双方都传送成功才用掉换位符"""
+		posCompFactory = serverApi.GetEngineCompFactory()
+		myPosComp = posCompFactory.CreatePos(playerId)
+		if not myPosComp:
+			logger.warning("[Gomoku] 换位失败：创建pos组件失败 {}".format(playerId))
+			return
+		myPos = myPosComp.GetPos()
+		if not myPos:
+			self.Announce("§c换位失败：无法读取你的位置")
+			return
+		mySide = self.GetPlayerSide(playerId)
+		# 挑最近的换位目标：排除自己；排除队友（mySide为None时不过滤，退化处理）
+		targetId, targetPos, bestDist = None, None, None
+		for pid in serverApi.GetPlayerList():
+			if pid == playerId:
+				continue
+			if mySide is not None and self.GetPlayerSide(pid) == mySide:
+				continue
+			otherPosComp = posCompFactory.CreatePos(pid)
+			otherPos = otherPosComp.GetPos() if otherPosComp else None
+			if not otherPos:
+				continue
+			dist = sum((otherPos[i] - myPos[i]) ** 2 for i in range(3))
+			if bestDist is None or dist < bestDist:
+				targetId, targetPos, bestDist = pid, otherPos, dist
+		if targetId is None:
+			self.Announce("§c换位失败：场上没有可交换的敌方玩家")
+			return
+		# 互换（文档注明在床上时SetPos返回False——任一侧失败都回滚，道具不消耗）
+		okA = posCompFactory.CreatePos(playerId).SetPos(targetPos)
+		okB = posCompFactory.CreatePos(targetId).SetPos(myPos)
+		if not (okA and okB):
+			if okA:
+				posCompFactory.CreatePos(playerId).SetPos(myPos)  # 回滚：把先传送的人送回原位
+			self.Announce("§c换位失败：对方暂时无法被传送")
+			logger.warning("[Gomoku] 换位SetPos失败: {}->{} okA={} okB={}".format(playerId, targetId, okA, okB))
+			return
+		if not self.ConsumeCarriedItem(playerId):
+			logger.warning("[Gomoku] 换位成功但道具消耗失败: {}".format(playerId))
+		self.Announce("§d移形换位：{} 与 {} 互换了位置！".format(
+			self.GetEntityName(playerId), self.GetEntityName(targetId)))
+		logger.info("[Gomoku] 换位: {} <-> {} (我方原位 {})".format(playerId, targetId, myPos))
+
+	def GetEntityName(self, entityId):
+		"""取玩家/生物显示名（播报用）；API异常时回退为实体id"""
+		try:
+			nameComp = serverApi.GetEngineCompFactory().CreateName(entityId)
+			return nameComp.GetName() if nameComp else entityId
+		except Exception as e:
+			logger.warning("[Gomoku] GetName 失败: {}".format(e))
+			return entityId
+
 	def OnPlayerTryDestroyBlock(self, args):
 		"""左键挖掘入口（挖穿前触发）：矿->采集（普通/硬化矿需对应镐，金矿徒手可挖）；
-		棋盘棋石->挖掉即销毁并释放引擎格子（普通3秒/硬化10秒由方块destroy_time控制）；
+		棋盘棋石->普通棋石须石镐、硬化棋石须铁镐、金棋石任何镐都挖不动（只能雷管炸）；
+		盘上挖掘耗时（6s/10s）均长于盘外采同系矿（3s/5s），由方块destroy_time控制；
 		棋盘基座->一律取消挖掘（不依赖destroy_time硬扛，脚本层直接cancel；
 		将来实现特殊道具时在此按手持道具放行）。棋子携带已满（MaxCarriedPieces）时
 		取消挖掘，矿保留原地、镐不消耗。工具校验采用原版语义——工具不对照样允许挖穿
@@ -660,6 +816,27 @@ class GomokuServerSystem(ServerSystem):
 			return
 		if blockName not in config.OrePieceItemDict:
 			if blockName in config.StoneBlockNameSet:
+				# 金棋石：任何镐都挖不动（脚本一律取消，与基座同款机制）——
+				# 只能靠雷管炸（墨水对金无效，金子无阵营可转化）
+				if blockName == config.StoneGoldName:
+					args['cancel'] = True
+					playerId = args.get('playerId')
+					if playerId:
+						self.AnnounceThrottled(playerId, 'goldStone',
+							"§c金棋石任何镐都无法挖掘，只能用爆炸雷管销毁")
+					return
+				# 普通黑白棋石须石镐、硬化棋石须铁镐（挖棋石不消耗镐，镐耐久只花在挖矿上）；
+				# 盘上挖掘耗时由方块destroy_time控制（6s/10s），均长于盘外采同系矿（3s/5s）
+				if blockName in (config.StoneBlackHardenedName, config.StoneWhiteHardenedName):
+					requiredPickaxe = config.PickaxeIronName
+				else:
+					requiredPickaxe = config.PickaxeStoneName
+				playerId = args.get('playerId')
+				if playerId and self.GetCarriedItemName(playerId) != requiredPickaxe:
+					args['cancel'] = True
+					self.AnnounceThrottled(playerId, 'stoneTool',
+						"§c这枚棋石须用{}挖掘".format(config.ItemTable[requiredPickaxe]['name']))
+					return
 				self.HandleStoneBreak(args)
 			elif blockName == config.DetonatorBlockName:
 				# 引爆前把雷管方块挖掉=拆除（销毁无掉落）；引信协程到点发现方块没了会自行取消
@@ -708,8 +885,8 @@ class GomokuServerSystem(ServerSystem):
 				blockName, config.OrePieceItemDict[blockName], args.get('x'), args.get('y'), args.get('z')))
 
 	def HandleStoneBreak(self, args):
-		"""棋盘棋石被挖掉（普通/硬化/gold同规则）：挖掉即销毁、无掉落，
-		并释放引擎中对应格子（被挖掉的子不再占线）；硬化棋石挖掘更久，由方块destroy_time控制"""
+		"""棋盘棋石被挖掉（走到这里的都过了门控：普通棋石须石镐、硬化棋石须铁镐、
+		金棋石已被取消）：挖掉即销毁、无掉落，并释放引擎中对应格子（被挖掉的子不再占线）"""
 		pos = (args.get('x'), args.get('y'), args.get('z'))
 		if None in pos:
 			return
@@ -718,10 +895,34 @@ class GomokuServerSystem(ServerSystem):
 		if not (x1 <= pos[0] <= x2 and z1 <= pos[2] <= z2 and pos[1] == y1 + 1):
 			return  # 不在棋盘落子层的棋石（正常不会有），仅销毁
 		bx, by = self.WorldToBoard(pos)
+		# 陷阱棋石：被挖毁时引爆（只炸玩家不毁棋盘），先消费雷再释放引擎格子
+		if (bx, by) in self.trapCells:
+			self.trapCells.discard((bx, by))
+			self.DetonateTrap(pos, args.get('playerId'))
 		removeResult = self.board.remove(bx, by)
 		if removeResult.ok:
 			logger.info("[Gomoku] 棋石被挖除: {} @ 引擎坐标{}".format(args.get('fullName'), (bx, by)))
 			self.Announce("§e棋盘上一枚棋子被挖掉了")
+
+	def DetonateTrap(self, pos, diggerId):
+		"""陷阱棋石被挖毁时引爆：炸死以该格为中心、TrapKillRadius半径内的全部玩家
+		（含亲手挖它的人，不分敌我——雷管只毁棋不伤人，陷阱正相反只伤人）。
+		棋石/棋盘/地形无损（本格棋石照常销毁、引擎格子照常释放，见HandleStoneBreak）。
+		受害名单用选择器圈定（CreateEntityComponent需传中心实体，这里传挖雷人），
+		逐个KillEntity处决（CreateGame组件，官方文档写法）"""
+		selector = '@a[x={},y={},z={},r={}]'.format(pos[0], pos[1], pos[2], config.TrapKillRadius)
+		victims = []
+		entityComp = serverApi.GetEngineCompFactory().CreateEntityComponent(diggerId) if diggerId else None
+		if entityComp:
+			victims = entityComp.GetEntitiesBySelector(selector) or []
+		killed = 0
+		gameComp = serverApi.GetEngineCompFactory().CreateGame(self.levelId)
+		for entityId in victims:
+			if gameComp and gameComp.KillEntity(entityId):
+				killed += 1
+		self.Announce("§c轰！陷阱棋石爆炸了！§f{}".format(
+			"炸倒了{}名玩家".format(killed) if killed else "没有玩家在范围内"))
+		logger.info("[Gomoku] 陷阱引爆: {} 处决{}人".format(pos, killed))
 
 	def DelayRestoreOre(self, pos, blockName):
 		"""挖穿事件后再把矿补回原地（事件先于方块真正消失，需延迟几帧）；补回后存量计数+1"""

@@ -1,0 +1,16 @@
+{
+    "format_version": "1.10",
+    "minecraft:item": {
+        "description": {
+            "identifier": "wihzo:gomoku_piece_trap",
+            "register_to_create_menu": true,
+            "category": "Items"
+        },
+        "components": {
+            "minecraft:max_stack_size": 1,
+            "netease:customtips": {
+                "value": "落子后与己方普通棋石一模一样，但被挖毁时会爆炸：炸死范围内的玩家（包括挖它的人），不毁棋盘；用一次即碎"
+            }
+        }
+    }
+}
