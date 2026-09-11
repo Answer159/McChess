@@ -26,7 +26,7 @@ dataDict = {
 			"weather_cycle": False
 		},
 		"difficulty": 1,
-		"gameMode": 2,
+		"gameMode": 0,
 		"isCreate": False,
 		"levelId": "",
 		"optionInfo": {

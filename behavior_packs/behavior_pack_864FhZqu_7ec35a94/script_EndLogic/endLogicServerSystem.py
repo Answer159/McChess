@@ -289,71 +289,12 @@ class EndLogicServerSystem(ServerSystem):
 		# 本局已被外部结算（如五子棋连珠）提前结束：超时结算作废
 		if self.endGameFlag:
 			return
-		# 开启倒计时则self.victoryJudgeConditionKey[1] == self.endJudgeConditionList[0]
-		victorName = ""
-		# 如果是个人+定时结束
-		players = self.playerDeathNumList
-		if self.startLogicServerSystem:
-			players = self.startLogicServerSystem.getPlayerEnsure()
-		if self.victoryJudgeConditionKey == (self.endConditionTypeList[0], self.endJudgeConditionList[0]):
-			victoryPlayerIdList = []
-			# 如果是死亡次数最少获胜
-			if self.victoryJudgeConditionValue == self.victoryJudgeConditionList[self.victoryJudgeConditionKey][0]:
-				deathNumMin = min(self.playerDeathNumList[i] for i in players)
-				for player in players:
-					if self.playerDeathNumList[player] == deathNumMin:
-						victoryPlayerIdList.append(player)
-				self.victoryPlayerIdList = victoryPlayerIdList
-			# 如果是杀人数最多获胜
-			elif self.victoryJudgeConditionValue == self.victoryJudgeConditionList[self.victoryJudgeConditionKey][1]:
-				killNumMax = max(self.playerKillNumList[i] for i in players)
-				for player in players:
-					if self.playerKillNumList[player] == killNumMax:
-						victoryPlayerIdList.append(player)
-				self.victoryPlayerIdList = victoryPlayerIdList
-				print "self.playerDeathNumList={0},killNumMax={1}".format(self.playerDeathNumList, killNumMax)
-			else:
-				logger.info("victoryJudgeConditionValue Error")
-				return
-			# 考虑并列第一
-			for i in range(len(victoryPlayerIdList)):
-				playerId = victoryPlayerIdList[i]
-				nameComp = self.CreateComponent(playerId, config.Minecraft, config.NameComponent)
-				victorName += nameComp.name
-				if i != len(victoryPlayerIdList) - 1:
-					victorName += ","
-		# 如果是队伍+定时结束
-		elif self.victoryJudgeConditionKey == (self.endConditionTypeList[1], self.endJudgeConditionList[0]):
-			# 如果队伍组件存在
-			if self.teamServerSystem:
-				queueScoreList = self.teamServerSystem.GetQueueScoreList()
-				data = self.teamServerSystem.GetQueueNameInfo()
-				queueNameList = data["queueNameDict"]
-				playerQueueMapList = self.teamServerSystem.GetPlayerQueueMap()
-				victoryQueueNameList = []
-				scoreMax = max(queueScoreList.values())
-				for queueName in queueScoreList:
-					if queueScoreList[queueName] == scoreMax:
-						victoryQueueNameList.append(queueName)
-						queueIndex = queueNameList.index(queueName)
-						for playerId in self.playerDeathNumList:
-							if playerId in playerQueueMapList:
-								if playerQueueMapList[playerId] == queueIndex:
-									self.victoryPlayerIdList.append(playerId)
-				# 考虑并列第一
-				for i in range(len(victoryQueueNameList)):
-					victorName += victoryQueueNameList[i]  # .encode("-utf8")
-					if i != len(victoryQueueNameList) - 1:
-						victorName += ","
-			else:
-				logger.info("Get teamServerSystem Fail")
-				return
-		else:
-			logger.info("Use StartClock Error")
-			return
+		# 超时一律平局结算（本图结算只有两种：超时平局 / 连珠获胜走ExternalSettleGame），
+		# 不再按队伍分数/死亡数评出胜方
+		logger.info("=====ClockEnd: 超时平局结算=====")
 		self.endGameFlag = True
-		# 进行通知
-		self.NotifyVictory(victorName)
+		self.victoryPlayerIdList = []
+		self.NotifyVictory('', "§e本局超时，双方平局")
 		if self.clearInvFlag:
 			for playerId in self.playerKillNumList:
 				comp = self.CreateComponent(playerId, config.Minecraft, 'item')

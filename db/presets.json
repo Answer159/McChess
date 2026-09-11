@@ -3,9 +3,9 @@
         "bornType": 0, 
         "changes": {
             "transform.pos": [
-                1854.0, 
+                1871.0, 
                 62.0, 
-                565.0
+                556.0
             ]
         }, 
         "classType": "PresetInstance", 
@@ -14,12 +14,12 @@
         "isPreLoad": false, 
         "loadPresetCfg": false, 
         "maxChunkPos": [
-            115, 
-            35
+            116, 
+            34
         ], 
         "minChunkPos": [
-            115, 
-            35
+            116, 
+            34
         ], 
         "name": "Anchor", 
         "objId": "2d9adaa13ef9455c97dd96f0b126cdd8", 
@@ -28,9 +28,9 @@
         "transform": {
             "classType": "Transform", 
             "pos": [
-                1854.0, 
+                1871.0, 
                 62.0, 
-                565.0
+                556.0
             ], 
             "rotation": [
                 0, 
