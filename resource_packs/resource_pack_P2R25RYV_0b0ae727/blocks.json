@@ -38,5 +38,9 @@
     "wihzo:gomoku_detonator_block": {
         "textures": "gomoku_detonator_block",
         "sound": "grass"
+    },
+    "wihzo:gomoku_block_random": {
+        "textures": "gomoku_block_random",
+        "sound": "stone"
     }
 }

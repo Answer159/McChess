@@ -51,3 +51,8 @@ gameRuleDict = {'option_info': optionInfo}
 if cheat:
 	gameRuleDict['cheat_info'] = cheatInfo
 
+# 立即重生（原版option_info游戏规则）：阵亡不弹"你死了/是否重生"界面，引擎直接在复活点重生。
+# 阵亡后的冷却倒计时由script_Gomoku接管（DeathRespawnHoldSeconds）。
+# 编辑器存的optionInfo没有这个键，放在locals()覆盖循环之后补上即不会被编辑器覆盖
+optionInfo['immediate_respawn'] = True
+

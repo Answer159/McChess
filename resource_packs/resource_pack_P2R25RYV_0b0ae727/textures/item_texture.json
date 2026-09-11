@@ -30,13 +30,16 @@
             "textures": "textures/blocks/trap_chess"
         },
         "gomoku_ink": {
-            "textures": "textures/blocks/obsidian"
+            "textures": "textures/items/ink"
         },
         "gomoku_detonator": {
             "textures": "textures/blocks/redstone_block"
         },
         "gomoku_swap": {
             "textures": "textures/items/ender_pearl"
+        },
+        "gomoku_board": {
+            "textures": "textures/blocks/chess_base"
         }
     }
 }

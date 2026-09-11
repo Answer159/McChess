@@ -9,7 +9,7 @@
   "UserName": null,
   "UserId": null,
   "Id": null,
-  "EditType": 1,
+  "EditType": 0,
   "IsMap": false,
   "CreateNew": false,
   "CodeEnable": false,
@@ -37,6 +37,6 @@
   "StudioTempPath": "D:\\MCStudioDownload\\temp\\editorTemp",
   "EditorResourcePackPath": "D:\\ProgramFiles\\MCStudio\\data\\inner_res",
   "EditDate": null,
-  "EditDuration": 14735,
+  "EditDuration": 990,
   "TestDuration": null
 }

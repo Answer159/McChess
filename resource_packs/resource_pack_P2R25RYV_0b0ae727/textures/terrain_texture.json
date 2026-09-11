@@ -33,6 +33,9 @@
         },
         "gomoku_detonator_block": {
             "textures": "textures/blocks/tnt_side"
+        },
+        "gomoku_block_random": {
+            "textures": "textures/blocks/randomitem"
         }
     }
 }
