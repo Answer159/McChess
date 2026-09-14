@@ -352,12 +352,12 @@ ItemTierDict = {
 	"mid": {
 		"name": "中级道具",
 		"items": [InkItemName, DetonatorItemName, PickaxeBoardName, BoardItemName],
-		"radius": (10, 18), "interval": 5,
+		"radius": (10, 25), "interval": 5,
 	},
 	"high": {
 		"name": "高级道具",
 		"items": [ExecutionSwordName, SwapItemName],
-		"radius": (18, 28), "interval": 10,
+		"radius": (25, 35), "interval": 10,
 	},
 }
 # 各等级道具的在场合计上限（同等级共用一个空位池，谁用掉谁释放）
