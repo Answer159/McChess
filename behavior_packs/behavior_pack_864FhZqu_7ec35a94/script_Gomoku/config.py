@@ -61,9 +61,29 @@ TeamServerSystemName = "TeamServerSystem"
 # virtual预设消耗掉（落成方块后清空该文件），脚本读到的永远是空列表（已实测）；
 # ModSDK也没有查询预设坐标的API，Anchor方块本体又是普通泥土无法扫描识别。
 BoardCenter = (1871, 62, 556)
-# 棋盘边长（格数），实际铺设为 BoardSize x BoardSize 的基座方阵，基座层会覆盖掉Anchor方块
+# 棋盘边长（格数），实际铺设为 BoardSize x BoardSize 的基座方阵（随机化开启时
+# 是最大范围，边缘会随机缺格，见下方"棋盘随机化"），基座层会覆盖掉Anchor方块
 # ★须为奇数（棋盘才有正中心）；改动后资源环最小内半径须 > BoardSize/2，否则物品会掉在棋盘上
 BoardSize = 9
+
+# ---------------------- 棋盘随机化 ----------------------
+# True时每局重新生成棋盘形状：中心不动，BoardSize见方范围内按概率随机缺格，
+# 越靠边缘缺的概率越大（不是完全随机）。环距 ring = 格到中心的切比雪夫距离
+# （0=中心格，half=BoardSize//2=最外环），规则：
+#   1. ring <= BoardCenterKeepRadius 的环永远完整（保住棋盘核心）；
+#   2. 之外的环缺格概率 = BoardEdgeRemoveChance * (ring/half) ** BoardRemoveFalloff
+#      ——中心完好、向边缘平滑升高，最外环恰好等于 BoardEdgeRemoveChance；
+#   3. 缺格 = 该格没有基座方块：本局无法落子（右键不到基座），但仍算主盘领地
+#      （便携棋盘不能往缺格里铺，扩展格另找空地）；破盘镐拆格同理从形状里除名。
+# 每一局开始时基座整层重铺后按新形状重新挖洞（见gomokuServerSystem的
+# GenerateBoardCells/CarveBoardHoles）；False = 传统满盘
+RandomizeBoard = True
+# 最外环的缺格概率（0~1；0=边缘也不缺，等效满盘）
+BoardEdgeRemoveChance = 0.5
+# 缺格概率随环距升高的幂次（越大越"中心完好、边缘破碎"；1=线性过渡）
+BoardRemoveFalloff = 2
+# 距中心该环距以内永远完整（1=中心3x3；0=只有中心格必留）
+BoardCenterKeepRadius = 1
 # 玩家进服后延迟多少秒尝试铺盘（避初始化竞态；0=立即）
 BoardBuildDelaySeconds = 1
 # 引擎网格边长：主盘9x9 + 便携棋盘扩展格共用一张大网格（以主盘中心为正中心，

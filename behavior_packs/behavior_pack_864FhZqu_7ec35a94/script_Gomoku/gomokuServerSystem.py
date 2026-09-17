@@ -24,11 +24,13 @@ class GomokuServerSystem(ServerSystem):
 	"""五子棋主系统（服务端权威）：棋盘铺设 / 刷资源 / 采集 / 落子
 
 	棋局逻辑（占用/终局/五连/平局）委托给 modCommon.gomokuCore.GomokuBoard：
-	主盘9x9与便携棋盘铺的扩展格共用一张大网格引擎（EngineGridSize，以主盘
+	主盘（随机形状，中心完整、越靠边缘缺格概率越大，每局重新生成，见GenerateBoardCells）
+	与便携棋盘铺的扩展格共用一张大网格引擎（EngineGridSize，以主盘
 	中心为正中心），扩展格上的子与主盘的子互相连线、统一判五连。
 	本系统只负责 MC 侧——方块事件、物品消耗、命令放块、跨Mod播报。
 	引擎坐标 (x=列, y=行)：x = 世界X - 网格西边缘X，y = 世界Z - 网格北边缘Z
-	（见WorldToGrid）；可落子的格子 = 主盘81格 + extensionCells扩展格。
+	（见WorldToGrid）；可落子的格子 = 主盘本局存在的格子（boardCells，随机形状）
+	+ extensionCells扩展格。
 
 	核心交互：
 	1. 手持棋子物品右键棋盘基座 -> 落子（颜色=落子方队伍，消耗棋子）
@@ -62,6 +64,10 @@ class GomokuServerSystem(ServerSystem):
 		# 棋盘中心（config.BoardCenter），首次使用时从config取
 		self.boardCenter = None
 		self.boardBuilt = False
+		# 本局主盘实际存在的格子（世界列坐标 {(x,z),...}）：随机化开启时棋盘不再
+		# 必然满盘——中心完整、越靠边缘缺格概率越大，每局重新生成（见GenerateBoardCells）。
+		# 缺格没有基座方块、无法落子，但仍算主盘领地（便携棋盘不能往缺格里铺）
+		self.boardCells = set()
 		self.spawnCoroutines = []
 		self.debugPlaceCount = 0
 		# 资源存量计数（维持总量，上限见config.SpawnMaxCountDict）：
@@ -187,11 +193,14 @@ class GomokuServerSystem(ServerSystem):
 		if not self.boardBuilt:
 			self.BuildBoard()
 		if self.boardBuilt:
-			# 重铺基座层：修复上一局被破盘镐拆掉的格子（/fill默认replace整层重铺，
-			# 对完好的基座无副作用；棋盘上方棋石的清理由ResetBoard负责）
+			# 重铺基座层：先整层重铺修复上一局被破盘镐拆掉的格子（/fill默认replace，
+			# 对完好的基座无副作用；棋盘上方棋石的清理由ResetBoard负责），再按
+			# 新一局的随机形状重新挖缺——每局棋盘形状都不一样（见GenerateBoardCells）
 			x1, y1, z1, x2, y2, z2 = self.GetBoardBounds()
 			self.RunCommand('/fill {} {} {} {} {} {} {}'.format(x1, y1, z1, x2, y2, z2, config.ChessBaseBlockName))
+			self.GenerateBoardCells()
 			self.ResetBoard()
+			self.CarveBoardHoles()
 		# 回合开始时StartLogic会清掉全部掉落物（/kill @e[type=item]），自维护计数同步清零
 		self.itemExpireDict = {}
 		if not self.spawnCoroutines:
@@ -214,6 +223,7 @@ class GomokuServerSystem(ServerSystem):
 
 	def BuildBoard(self):
 		"""以Anchor为中心铺设主盘基座（基座 /fill 覆盖掉Anchor方块本身），并清空上方旧棋石。
+		先铺满 BoardSize x BoardSize 整层，再按随机形状挖缺格（见GenerateBoardCells）。
 		先用tickingarea常驻加载棋盘区域，保证等待阶段（无玩家在附近）也能铺设。
 		返回是否铺设成功。"""
 		cx, cy, cz = self.EnsureBoardCenter()
@@ -224,9 +234,58 @@ class GomokuServerSystem(ServerSystem):
 			logger.warning("[Gomoku] 棋盘铺设命令执行失败，开局时将重试")
 			return False
 		self.boardBuilt = True
+		self.GenerateBoardCells()
+		self.CarveBoardHoles()
 		logger.info("[Gomoku] 棋盘已铺设: {} ~ {}".format((x1, y1, z1), (x2, y2, z2)))
 		self.ResetBoard()
 		return True
+
+	def GenerateBoardCells(self):
+		"""生成本局主盘形状：中心不动，越靠边缘缺格概率越大（不是完全随机）。
+		环距 ring = 格到中心的切比雪夫距离（0=中心格，half=最外环）：
+		  ring <= BoardCenterKeepRadius 的环永远完整；之外的环缺格概率 =
+		  BoardEdgeRemoveChance * (ring/half) ** BoardRemoveFalloff。
+		结果存入boardCells（世界列坐标集合）；随机化关闭=满盘不缺格"""
+		cx, cy, cz = self.EnsureBoardCenter()
+		half = config.BoardSize // 2
+		if not config.RandomizeBoard:
+			self.boardCells = {(x, z)
+				for x in range(cx - half, cx + half + 1)
+				for z in range(cz - half, cz + half + 1)}
+			return
+		cells = set()
+		for x in range(cx - half, cx + half + 1):
+			for z in range(cz - half, cz + half + 1):
+				ring = max(abs(x - cx), abs(z - cz))
+				if ring <= config.BoardCenterKeepRadius:
+					cells.add((x, z))
+					continue
+				removeChance = config.BoardEdgeRemoveChance \
+					* (float(ring) / half) ** config.BoardRemoveFalloff
+				if random.random() >= removeChance:
+					cells.add((x, z))
+		self.boardCells = cells
+		total = config.BoardSize * config.BoardSize
+		logger.info("[Gomoku] 本局棋盘形状已生成: {}/{}格 (缺{}格)".format(
+			len(cells), total, total - len(cells)))
+
+	def CarveBoardHoles(self):
+		"""按boardCells把缺格挖成空气：调用前须刚/fill铺满过整层基座（本方法只挖不铺，
+		不管上一局的残格）。逐行把连续缺格段合并成一条/fill air，减少命令数"""
+		total = config.BoardSize * config.BoardSize
+		if len(self.boardCells) == total:
+			return  # 满盘（随机化关闭/本局一格没缺），无需挖
+		x1, y1, z1, x2, y2, z2 = self.GetBoardBounds()
+		for z in range(z1, z2 + 1):
+			runStart = None
+			for x in range(x1, x2 + 2):
+				missing = x <= x2 and (x, z) not in self.boardCells
+				if missing and runStart is None:
+					runStart = x
+				elif not missing and runStart is not None:
+					self.RunCommand('/fill {} {} {} {} {} {} air 0 replace'.format(
+						runStart, y1, z, x - 1, y1, z))
+					runStart = None
 
 	def ResetBoard(self):
 		"""回合重置：主盘清上方棋石并重置引擎；便携棋盘铺的扩展格整体拆除
@@ -245,7 +304,14 @@ class GomokuServerSystem(ServerSystem):
 		self.trapCells = set()
 
 	def IsOnBoard(self, pos):
-		"""pos在主盘基座层（9x9基座上，右键落子的目标高度）"""
+		"""pos在主盘基座层且该格本局存在（随机形状下边缘可能有缺格，缺格不算在盘上）"""
+		x1, y1, z1, x2, y2, z2 = self.GetBoardBounds()
+		return x1 <= pos[0] <= x2 and z1 <= pos[2] <= z2 and pos[1] == y1 \
+			and (pos[0], pos[2]) in self.boardCells
+
+	def IsInBoardArea(self, pos):
+		"""pos在主盘的BoardSize见方范围内（不论该格本局是否存在）：缺格仍是主盘领地，
+		便携棋盘不能往缺格里铺（见HandleCellPlace），与IsOnBoard区分"""
 		x1, y1, z1, x2, y2, z2 = self.GetBoardBounds()
 		return x1 <= pos[0] <= x2 and z1 <= pos[2] <= z2 and pos[1] == y1
 
@@ -256,14 +322,15 @@ class GomokuServerSystem(ServerSystem):
 		return pos[1] == self.GetBoardBounds()[1] and (pos[0], pos[2]) in self.extensionCells
 
 	def IsPlayableGridCell(self, gx, gy):
-		"""引擎坐标(gx,gy)是否为可落子格：主盘9x9（在EngineGridSize网格的正中央）
-		或便携棋盘扩展格。引擎网格99x99远大于实际可落子区，判断不能只看in_bounds
+		"""引擎坐标(gx,gy)是否为可落子格：主盘中央BoardSize见方内本局存在的格子
+		（随机形状的缺格不可落子，见boardCells）或便携棋盘扩展格。
+		引擎网格99x99远大于实际可落子区，判断不能只看in_bounds
 		（方阵棋子的2x2过滤用这里，否则会把棋子铺到没有基座的空网格上）"""
 		r = config.EngineGridSize // 2
 		h = config.BoardSize // 2
-		if r - h <= gx <= r + h and r - h <= gy <= r + h:
-			return True
 		cx, cy, cz = self.EnsureBoardCenter()
+		if r - h <= gx <= r + h and r - h <= gy <= r + h:
+			return (gx + (cx - r), gy + (cz - r)) in self.boardCells
 		return (gx + (cx - r), gy + (cz - r)) in self.extensionCells
 
 	def IsStoneSlot(self, pos):
@@ -758,7 +825,7 @@ class GomokuServerSystem(ServerSystem):
 			stoneName, player = config.StoneWhiteName, WHITE
 		placed = 0
 		for cx, cy in legalCells:
-			stonePos = self.BoardToWorld(cx, cy)
+			stonePos = self.GridToWorld(cx, cy)
 			self.RunCommand('/setblock {} {} {} {}'.format(stonePos[0], stonePos[1], stonePos[2], stoneName))
 			result = self.PlaceInEngine(cx, cy, player)
 			if not result.ok:
@@ -792,13 +859,13 @@ class GomokuServerSystem(ServerSystem):
 
 	def CheckBoardFull(self):
 		"""落子后查满盘（引擎网格远大于可落子区，引擎的is_full永不触发，平局在这判）：
-		主盘81格全部占满 -> 扩展格还有空就提示继续；主盘+扩展格全满 -> 平局结算"""
-		x1, y1, z1, x2, y2, z2 = self.GetBoardBounds()
-		for x in range(x1, x2 + 1):
-			for z in range(z1, z2 + 1):
-				gx, gy = self.WorldToGrid((x, y1, z))
-				if self.board.get(gx, gy) == EMPTY:
-					return  # 主盘还有空位，未满
+		主盘本局存在的格子（boardCells，随机形状的缺格/破盘镐拆掉的格不算）全部占满
+		-> 扩展格还有空就提示继续；主盘+扩展格全满 -> 平局结算"""
+		y1 = self.GetBoardBounds()[1]
+		for (x, z) in self.boardCells:
+			gx, gy = self.WorldToGrid((x, y1, z))
+			if self.board.get(gx, gy) == EMPTY:
+				return  # 主盘还有空位，未满
 		for (x, z) in self.extensionCells:
 			gx, gy = self.WorldToGrid((x, y1, z))
 			if self.board.get(gx, gy) == EMPTY:
@@ -944,6 +1011,11 @@ class GomokuServerSystem(ServerSystem):
 		if not self.ConsumeCarriedItem(playerId):
 			return
 		self.RunCommand('/setblock {} {} {} air'.format(pos[0], pos[1], pos[2]))
+		gx, gy = self.WorldToGrid(pos)
+		if self.board.get(gx, gy) == EMPTY:
+			# 该格没有浮空棋石：从本局形状里除名——满盘判定不再等这格
+			# （它永远填不上了）；有浮空棋石的格保留（那格算已占用）
+			self.boardCells.discard((pos[0], pos[2]))
 		self.Announce("§c破盘镐拆掉了一格棋盘基座，该格本局无法落子（新一局自动修复）")
 		logger.info("[Gomoku] 破盘镐拆格: {} ({})".format(pos, playerId))
 
@@ -1034,7 +1106,8 @@ class GomokuServerSystem(ServerSystem):
 			self.Announce("§c摆放棋盘格需要先加入队伍")
 			return
 		x, z = pos[0], pos[2]
-		if self.IsOnBoard((x, y1, z)):
+		# 用范围判定而非IsOnBoard：随机形状的缺格仍在主盘领地内，不能往缺格里铺
+		if self.IsInBoardArea((x, y1, z)):
 			self.Announce("§c摆放失败：这里已经在主棋盘上了")
 			return
 		if (x, z) in self.extensionCells:
