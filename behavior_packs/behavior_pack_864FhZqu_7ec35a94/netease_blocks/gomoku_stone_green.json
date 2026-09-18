@@ -1,0 +1,32 @@
+{
+    "format_version": "1.10.0",
+    "minecraft:block": {
+        "description": {
+            "identifier": "wihzo:gomoku_stone_green"
+        },
+        "components": {
+            "minecraft:map_color": {
+                "color": "#4BA04B"
+            },
+            "minecraft:destroy_time": {
+                "value": 6
+            },
+            "minecraft:explosion_resistance": {
+                "value": 100000
+            },
+            "netease:aabb": {
+                "collision": {
+                    "min": [0, 0, 0],
+                    "max": [1, 1, 1]
+                },
+                "clip": {
+                    "min": [0, 0, 0],
+                    "max": [1, 1, 1]
+                }
+            },
+            "netease:custom_tips": {
+                "value": "绿方棋子（挖掉即销毁，无掉落）"
+            }
+        }
+    }
+}

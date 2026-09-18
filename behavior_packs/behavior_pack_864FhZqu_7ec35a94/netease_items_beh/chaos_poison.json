@@ -1,0 +1,16 @@
+{
+    "format_version": "1.10",
+    "minecraft:item": {
+        "description": {
+            "identifier": "wihzo:chaos_poison",
+            "register_to_create_menu": true,
+            "category": "Equipment"
+        },
+        "components": {
+            "minecraft:max_stack_size": 1,
+            "netease:customtips": {
+                "value": "砸中敌方玩家：不造成伤害，但对方10秒内前后左右移动反向（按前进会后退），且屏幕天旋地转；砸中后碎裂消失"
+            }
+        }
+    }
+}

@@ -5,31 +5,43 @@
     "num_mip_levels": 4,
     "texture_data": {
         "chess_base": {
-            "textures": "textures/blocks/chess_base"
+            "textures": "textures/blocks/chess/chess_base"
         },
         "gomoku_stone_black": {
-            "textures": "textures/blocks/fragile_black_chess"
+            "textures": "textures/blocks/chess/fragile_black_chess"
         },
         "gomoku_stone_white": {
-            "textures": "textures/blocks/fragile_white_chess"
+            "textures": "textures/blocks/chess/fragile_white_chess"
         },
         "gomoku_stone_black_hardened": {
-            "textures": "textures/blocks/hard_black_chess"
+            "textures": "textures/blocks/chess/hard_black_chess"
         },
         "gomoku_stone_white_hardened": {
-            "textures": "textures/blocks/hard_white_chess"
+            "textures": "textures/blocks/chess/hard_white_chess"
+        },
+        "gomoku_stone_blue": {
+            "textures": "textures/blocks/chess/fragile_blue_chess"
+        },
+        "gomoku_stone_green": {
+            "textures": "textures/blocks/chess/fragile_green_chess"
+        },
+        "gomoku_stone_blue_hardened": {
+            "textures": "textures/blocks/chess/hard_blue_chess"
+        },
+        "gomoku_stone_green_hardened": {
+            "textures": "textures/blocks/chess/hard_green_chess"
         },
         "gomoku_stone_gold": {
             "textures": "textures/blocks/gold_block"
         },
         "gomoku_ore_normal": {
-            "textures": "textures/blocks/fragile_chess"
+            "textures": "textures/blocks/chess/fragile_chess"
         },
         "gomoku_ore_hardened": {
-            "textures": "textures/blocks/hard_chess"
+            "textures": "textures/blocks/chess/hard_chess"
         },
         "gomoku_ore_gold": {
-            "textures": "textures/blocks/golden_chess"
+            "textures": "textures/blocks/chess/golden_chess"
         },
         "gomoku_detonator_block": {
             "textures": "textures/blocks/tnt_side"

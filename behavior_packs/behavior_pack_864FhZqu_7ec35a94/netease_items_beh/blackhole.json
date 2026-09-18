@@ -1,0 +1,16 @@
+{
+    "format_version": "1.10",
+    "minecraft:item": {
+        "description": {
+            "identifier": "wihzo:blackhole",
+            "register_to_create_menu": true,
+            "category": "Equipment"
+        },
+        "components": {
+            "minecraft:max_stack_size": 1,
+            "netease:customtips": {
+                "value": "右键释放（对空气也可以）：吞噬棋盘上的所有棋子，不分敌我全部清空（棋盘基座无损，仍可继续落子）；用一次即碎。只能从问号方块中开出"
+            }
+        }
+    }
+}

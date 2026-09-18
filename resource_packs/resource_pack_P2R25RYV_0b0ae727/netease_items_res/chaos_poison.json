@@ -1,0 +1,12 @@
+{
+    "format_version": "1.10",
+    "minecraft:item": {
+        "description": {
+            "identifier": "wihzo:chaos_poison",
+            "category": "Equipment"
+        },
+        "components": {
+            "minecraft:icon": "chaos_poison"
+        }
+    }
+}

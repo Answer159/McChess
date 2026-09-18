@@ -1,13 +1,7 @@
 {
     "format_version": "1.10.0",
     "minecraft:block": {
-        "description": {
-            "identifier": "wihzo:McChess_ChessBase"
-        },
         "components": {
-            "minecraft:map_color": {
-                "color": "#408080"
-            },
             "minecraft:destroy_time": {
                 "value": 100000
             },
@@ -15,27 +9,49 @@
                 "value": 100000
             },
             "minecraft:friction": 0.4,
+            "minecraft:map_color": {
+                "color": "#408080"
+            },
             "netease:aabb": {
-                "collision": {
-                    "min": [0, 0, 0],
-                    "max": [1, 1, 1]
-                },
                 "clip": {
-                    "min": [0, 0, 0],
-                    "max": [1, 1, 1]
+                    "max": [
+                        1,
+                        1,
+                        1
+                    ],
+                    "min": [
+                        0,
+                        0,
+                        0
+                    ]
+                },
+                "collision": {
+                    "max": [
+                        1,
+                        1,
+                        1
+                    ],
+                    "min": [
+                        0,
+                        0,
+                        0
+                    ]
                 }
+            },
+            "netease:block_entity": {
+                "movable": false,
+                "tick": false
+            },
+            "netease:custom_tips": {
+                "value": "国际象棋棋盘基座（不可挖掘）"
             },
             "netease:tier": {
                 "digger": "pickaxe",
                 "level": 3
-            },
-            "netease:block_entity": {
-                "tick": false,
-                "movable": false
-            },
-            "netease:custom_tips": {
-                "value": "国际象棋棋盘基座（不可挖掘）"
             }
+        },
+        "description": {
+            "identifier": "wihzo:McChess_ChessBase"
         }
     }
 }
