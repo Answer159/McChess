@@ -19,6 +19,7 @@ ServerSystemClsPath = "gomokuServerSystem.GomokuServerSystem"
 Minecraft = "Minecraft"
 CommandComponent = "command"
 ItemComponent = "item"
+EffectComponent = "effect"
 PosComponent = "pos"
 EngineTypeComponent = "engineType"
 NameComponent = "name"
@@ -159,12 +160,16 @@ InkItemName = "wihzo:gomoku_ink"
 DetonatorItemName = "wihzo:gomoku_detonator"
 SwapItemName = "wihzo:gomoku_swap"
 BoardItemName = "wihzo:gomoku_board"
+AntiDamageItemName = "wihzo:anti_damage"
+SpeedPotionItemName = "wihzo:speed_up"
+DizzyHammerItemName = "wihzo:dizzy_hammer"
 
 # ---------------------- 道具表 ----------------------
 # 所有道具的统一定义，后续开发新道具只加这里，系统按 type 分派行为：
 #   name:       短显示名（播报用；物品JSON里的display_name是带说明的详细版）
 #   type:       'piece' 棋子 / 'pickaxe' 采集镐 / 'weapon' 武器 / 'ink' 转化墨水 / 'bomb' 爆炸雷管 /
-#               'boardpick' 破盘镐 / 'swap' 换位符 / 'board' 便携棋盘
+#               'boardpick' 破盘镐 / 'swap' 换位符 / 'board' 便携棋盘 / 'transfer' 转移符 /
+#               'speed' 加速药水
 #   consumable: 使用一次即销毁（耐久1）
 #   piece 专用:  fromOre 产出该棋子的矿 / wildcard 万能挡子（金棋子，落子不分颜色、只挡线不获胜）/
 #               square 方阵棋子（2x2铺子：点击格为左上角，越界/已占格忽略，见HandleSquarePlace）/
@@ -178,6 +183,8 @@ BoardItemName = "wihzo:gomoku_board"
 #   board 专用:  maxUses 可铺的1x1扩展格数（★须与beh JSON的minecraft:max_damage一致——
 #               耐久是引擎物品数据，扣减/归零销毁见DamageBoardItem；扩展格与主盘
 #               共用引擎网格，上面的子与主盘的子互相连线）
+#   transfer专用: 无额外字段（右键激活护盾：下次受到的真实伤害不落在自己身上，
+#               全额转给最近的敌方玩家，见HandleTransferUse/OnDamage）
 ItemTable = {
 	PieceItemNormal: {
 		"name": "普通棋子", "type": "piece",
@@ -222,6 +229,19 @@ ItemTable = {
 	SwapItemName: {
 		"name": "换位符", "type": "swap", "consumable": True,
 	},
+	AntiDamageItemName: {
+		"name": "转移符", "type": "transfer", "consumable": True,
+	},
+	SpeedPotionItemName: {
+		"name": "加速药水", "type": "speed", "consumable": True,
+	},
+	DizzyHammerItemName: {
+		"name": "眩晕锤", "type": "weapon", "consumable": True,
+		# dizzy=零伤害缴械武器：命中敌方玩家不造成伤害，改为眩晕+掉落全部道具
+		# （见OnPlayerAttack的dizzy分支与HandleDizzyHammerHit）；
+		# 不写damage（缺省会套DefaultWeaponDamage一击必杀）
+		"dizzy": True,
+	},
 	BoardItemName: {
 		"name": "便携棋盘", "type": "board",
 		"maxUses": 2,  # 可铺2格（★与beh JSON的minecraft:max_damage一致）
@@ -244,6 +264,16 @@ DefaultWeaponDamage = 9999
 # （与雷管正相反：雷管只毁棋不伤人）。★须≥挖掘触手距离（约4格），
 # 保证亲手挖陷阱的玩家自己也在爆炸半径内
 TrapKillRadius = 4
+
+# 加速药水：使用后给自己提速——引擎移动速度在基础值上提升 SpeedPotionPercent 百分比，
+# 持续 SpeedPotionDuration 秒后自动恢复原速；连喝不叠加，只重置持续时间（见HandleSpeedPotionUse）
+SpeedPotionPercent = 25     # 提速百分比（25=比原速快25%）
+SpeedPotionDuration = 10    # 持续秒数
+
+# 眩晕锤：锤中敌方玩家不造成伤害，但目标被眩晕（移速锁死+反胃+拳头无力）这么
+# 多秒、背包道具全部掉在脚下（眩晕期间拾取被拦截，防原地秒捡回去——见
+# HandleDizzyHammerHit）。效果时长按整秒生效（引擎AddEffectToEntity只收整秒）
+DizzyHammerStunSeconds = 1.5
 
 # 派生表（由道具表自动生成，勿手改）
 # 镐 -> 可采集的矿
@@ -371,12 +401,12 @@ ItemTierDict = {
 	},
 	"mid": {
 		"name": "中级道具",
-		"items": [InkItemName, DetonatorItemName, PickaxeBoardName, BoardItemName],
+		"items": [InkItemName, DetonatorItemName, PickaxeBoardName, BoardItemName, SpeedPotionItemName],
 		"radius": (10, 25), "interval": 5,
 	},
 	"high": {
 		"name": "高级道具",
-		"items": [ExecutionSwordName, SwapItemName],
+		"items": [ExecutionSwordName, SwapItemName, AntiDamageItemName, DizzyHammerItemName],
 		"radius": (25, 35), "interval": 10,
 	},
 }

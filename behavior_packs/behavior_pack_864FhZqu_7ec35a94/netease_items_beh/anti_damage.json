@@ -1,0 +1,16 @@
+{
+    "format_version": "1.10",
+    "minecraft:item": {
+        "description": {
+            "identifier": "wihzo:anti_damage",
+            "register_to_create_menu": true,
+            "category": "Equipment"
+        },
+        "components": {
+            "minecraft:max_stack_size": 1,
+            "netease:customtips": {
+                "value": "右键激活（对空气也可以）：下次受到的伤害不落在自己身上，全额转给最近的敌方玩家。触发后或新一局开始时失效；用一次即碎"
+            }
+        }
+    }
+}

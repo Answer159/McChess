@@ -1,0 +1,16 @@
+{
+    "format_version": "1.10",
+    "minecraft:item": {
+        "description": {
+            "identifier": "wihzo:dizzy_hammer",
+            "register_to_create_menu": true,
+            "category": "Equipment"
+        },
+        "components": {
+            "minecraft:max_stack_size": 1,
+            "netease:customtips": {
+                "value": "锤中敌方玩家：不造成伤害，但对方被眩晕且携带的道具全部掉落在地（眩晕期间无法拾取）；锤中后碎裂消失"
+            }
+        }
+    }
+}

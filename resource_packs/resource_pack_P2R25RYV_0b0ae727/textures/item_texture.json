@@ -38,6 +38,15 @@
         "gomoku_swap": {
             "textures": "textures/items/ender_pearl"
         },
+        "anti_damage": {
+            "textures": "textures/items/anti-damage"
+        },
+        "speed_up": {
+            "textures": "textures/items/speed-up"
+        },
+        "dizzy_hammer": {
+            "textures": "textures/items/dizzy-hammer"
+        },
         "gomoku_board": {
             "textures": "textures/blocks/chess_base"
         }

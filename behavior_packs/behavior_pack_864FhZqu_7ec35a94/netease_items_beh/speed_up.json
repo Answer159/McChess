@@ -1,0 +1,16 @@
+{
+    "format_version": "1.10",
+    "minecraft:item": {
+        "description": {
+            "identifier": "wihzo:speed_up",
+            "register_to_create_menu": true,
+            "category": "Equipment"
+        },
+        "components": {
+            "minecraft:max_stack_size": 1,
+            "netease:customtips": {
+                "value": "右键饮用（对空气也可以）：短时间内移动速度大幅提升，到期自动恢复；连喝不叠加只刷新时间。用一次即碎"
+            }
+        }
+    }
+}

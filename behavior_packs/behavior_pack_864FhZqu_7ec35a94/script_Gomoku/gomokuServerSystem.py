@@ -87,6 +87,21 @@ class GomokuServerSystem(ServerSystem):
 		# （指方块右键走ServerItemUseOnEvent、对空气右键走ServerItemTryUseEvent），
 		# 同一次点击两个事件可能都到——1秒内只生效一次
 		self.swapTriggerTime = {}
+		# 转移符护盾登记：{playerId}。激活后下一次受到的真实伤害不落在自己身上，
+		# 全额转给最近的敌方玩家（见OnDamage）；触发即失效，新一局开始清空；
+		# 与换位符同款双入口（UseOn/TryUse），transferUseTime去重
+		self.transferShieldSet = set()
+		self.transferUseTime = {}
+		# 加速药水登记：speedPotionUseTime右键去重（UseOn/TryUse双入口）；
+		# speedPotionBaseDict记录提速前的基础速度（到期恢复/续喝不叠加的基准），
+		# speedPotionCoroutineDict持有到期协程（新一瓶顶掉旧的=只重置计时）
+		self.speedPotionUseTime = {}
+		self.speedPotionBaseDict = {}
+		self.speedPotionCoroutineDict = {}
+		# 眩晕锤的眩晕登记：playerId -> 眩晕解禁时刻（time.time()秒）。眩晕期间
+		# 拦截拾取（见OnPlayerTryTouch）——道具被锤落在脚下，不拦着会原地秒捡回去；
+		# 移速锁死等表现由原版效果承担（见HandleDizzyHammerHit），不在这里做
+		self.dizzyStunUntilDict = {}
 		# 阵亡冷却：playerId -> 解禁时刻（time.time()秒）。WorldMod的immediate_respawn规则
 		# 使阵亡者不弹原版死亡界面、自动在队伍复活点（棋盘附近）重生；这里封锁其行动到解禁
 		# （时长=config.DeathRespawnHoldSeconds，倒计时见RespawnCountdown）
@@ -187,6 +202,9 @@ class GomokuServerSystem(ServerSystem):
 			self.Announce("§e新对局开始，已清空背包")
 		self.announceThrottleTime = {}
 		self.respawnHoldUntilDict = {}  # 上一局残留的阵亡冷却不带到下一局
+		self.transferShieldSet = set()  # 转移符护盾不跨局（道具都回收了，护盾跟着作废）
+		self.ClearAllSpeedBoosts()  # 加速药水效果同理不跨局：全体恢复原速
+		self.dizzyStunUntilDict = {}  # 眩晕锤的眩晕同理不跨局
 		# 开局重设一遍全体复活点（进服时设过；对局中入队的玩家兜底）
 		for playerId in self.playerIds:
 			self.SetEngineRespawnPoint(playerId)
@@ -566,6 +584,11 @@ class GomokuServerSystem(ServerSystem):
 			args['pickupDelay'] = config.FullPickupDelayFrames
 			self.TellRespawnHeld(playerId)
 			return
+		if time.time() < self.dizzyStunUntilDict.get(playerId, 0):
+			# 眩晕锤的眩晕中：一律不许捡（含道具）——缴械掉的物品留在地上等对手来抢
+			args['cancel'] = True
+			args['pickupDelay'] = config.FullPickupDelayFrames
+			return
 		if self.GetItemName(itemDict) not in config.PieceItemNameSet:
 			return
 		if self.CountCarriedPieces(playerId) + itemDict.get('count', 1) > config.MaxCarriedPieces:
@@ -703,6 +726,16 @@ class GomokuServerSystem(ServerSystem):
 			# 两条入口同一去处，去重见HandleSwapUse）
 			self.HandleSwapUse(playerId)
 			return
+		if itemType == 'transfer':
+			# 手持转移符右键 -> 激活伤害转移护盾（对空气右键走OnItemTryUse，
+			# 两条入口同一去处，去重见HandleTransferUse）
+			self.HandleTransferUse(playerId)
+			return
+		if itemType == 'speed':
+			# 手持加速药水右键 -> 给自己提速（对空气右键走OnItemTryUse，
+			# 两条入口同一去处，去重见HandleSpeedPotionUse）
+			self.HandleSpeedPotionUse(playerId)
+			return
 		if itemType == 'board':
 			# 手持便携棋盘右键棋盘平面或低一层的地面 -> 铺一格1x1棋盘格（见HandleCellPlace）
 			self.HandleCellPlace(playerId, pos)
@@ -724,12 +757,27 @@ class GomokuServerSystem(ServerSystem):
 		if not playerId or not itemName:
 			logger.warning("[Gomoku] 物品尝试使用事件字段异常: {}".format(args))
 			return
-		if itemName != config.SwapItemName:
-			return  # 其他物品的右键不在本事件处理（避免与OnItemUseOn双触发）
-		if self.IsRespawnHeld(playerId):
-			self.TellRespawnHeld(playerId)
+		if itemName == config.SwapItemName:
+			if self.IsRespawnHeld(playerId):
+				self.TellRespawnHeld(playerId)
+				return
+			self.HandleSwapUse(playerId)
 			return
-		self.HandleSwapUse(playerId)
+		if itemName == config.AntiDamageItemName:
+			# 转移符与换位符同款双入口：对空气右键只有本事件接得住（见OnItemUseOn注释）
+			if self.IsRespawnHeld(playerId):
+				self.TellRespawnHeld(playerId)
+				return
+			self.HandleTransferUse(playerId)
+			return
+		if itemName == config.SpeedPotionItemName:
+			# 加速药水同款双入口：对空气右键只有本事件接得住（见OnItemUseOn注释）
+			if self.IsRespawnHeld(playerId):
+				self.TellRespawnHeld(playerId)
+				return
+			self.HandleSpeedPotionUse(playerId)
+			return
+		# 其他物品的右键不在本事件处理（避免与OnItemUseOn双触发）
 
 	def HandlePlace(self, playerId, pos):
 		"""手持棋子物品右键棋盘基座（主盘或扩展格）-> 落子（占用/终局校验与
@@ -1082,6 +1130,125 @@ class GomokuServerSystem(ServerSystem):
 			logger.warning("[Gomoku] GetName 失败: {}".format(e))
 			return entityId
 
+	def HandleTransferUse(self, playerId):
+		"""转移符：右键激活护盾——下一次受到的真实伤害不落在自己身上，全额转给
+		最近的敌方玩家（转移逻辑见OnDamage）。触发后护盾消失；护盾不跨局
+		（OnRoundStart清空）。与换位符同款双入口（指方块右键走OnItemUseOn、
+		对空气右键走OnItemTryUse），transferUseTime做1秒去重防同次点击双触发"""
+		now = time.time()
+		if now - self.transferUseTime.get(playerId, 0) < 1.0:
+			return
+		self.transferUseTime[playerId] = now
+		logger.info("[Gomoku] 转移符右键: {} 手持={}".format(playerId, self.GetCarriedItemName(playerId)))
+		if not self.ConsumeCarriedItem(playerId):
+			return
+		refreshed = playerId in self.transferShieldSet
+		self.transferShieldSet.add(playerId)
+		if refreshed:
+			self.SendMessageToPlayer(playerId, "§d转移符护盾已刷新：下次受到的伤害将转给敌人")
+		else:
+			self.SendMessageToPlayer(playerId, "§d转移符护盾已激活：下次受到的伤害将转给敌人")
+
+	def FindNearestEnemyPlayer(self, playerId):
+		"""距playerId最近的不同阵营玩家（TeamMod缺失/本方无阵营时退化为任意其他玩家）；
+		跳过阵亡冷却中的玩家（其伤害会被OnDamage清零，转给他们等于白转）；
+		场上没有可选目标返回None。换位符的目标挑选同款规则"""
+		posCompFactory = serverApi.GetEngineCompFactory()
+		myPosComp = posCompFactory.CreatePos(playerId)
+		myPos = myPosComp.GetPos() if myPosComp else None
+		if not myPos:
+			return None
+		mySide = self.GetPlayerSide(playerId)
+		targetId, bestDist = None, None
+		for pid in serverApi.GetPlayerList():
+			if pid == playerId or self.IsRespawnHeld(pid):
+				continue
+			if mySide is not None and self.GetPlayerSide(pid) == mySide:
+				continue
+			otherPosComp = posCompFactory.CreatePos(pid)
+			otherPos = otherPosComp.GetPos() if otherPosComp else None
+			if not otherPos:
+				continue
+			dist = sum((otherPos[i] - myPos[i]) ** 2 for i in range(3))
+			if bestDist is None or dist < bestDist:
+				targetId, bestDist = pid, dist
+		return targetId
+
+	# ---------- 加速药水 ----------
+
+	def HandleSpeedPotionUse(self, playerId):
+		"""加速药水：右键给自己提速——引擎移动速度(SPEED属性)在基础值上提升
+		config.SpeedPotionPercent 百分比，持续 config.SpeedPotionDuration 秒后
+		自动恢复原速（见SpeedBoostExpire）。与换位符/转移符同款双入口
+		（指方块右键走OnItemUseOn、对空气右键走OnItemTryUse），speedPotionUseTime
+		做1秒去重防同次点击双触发。连喝不叠加：提速幅度始终按第一次喝之前的
+		基础值算，只把持续时间重置满（speedPotionCoroutineDict顶掉旧到期协程）"""
+		now = time.time()
+		if now - self.speedPotionUseTime.get(playerId, 0) < 1.0:
+			return
+		self.speedPotionUseTime[playerId] = now
+		logger.info("[Gomoku] 加速药水右键: {} 手持={}".format(playerId, self.GetCarriedItemName(playerId)))
+		attrComp = serverApi.GetEngineCompFactory().CreateAttr(playerId)
+		if not attrComp:
+			self.SendMessageToPlayer(playerId, "§c加速药水未能生效，请重试")
+			logger.warning("[Gomoku] 创建attr组件失败: {}".format(playerId))
+			return
+		attrType = serverApi.GetMinecraftEnum().AttrType.SPEED
+		refreshed = playerId in self.speedPotionCoroutineDict
+		if refreshed:
+			# 上一瓶还没到期：沿用其基础值（不叠加），下面只重置计时
+			baseValue = self.speedPotionBaseDict.get(playerId, attrComp.GetAttrValue(attrType))
+		else:
+			baseValue = attrComp.GetAttrValue(attrType)
+		if not self.ConsumeCarriedItem(playerId):
+			return
+		if refreshed:
+			CoroutineMgr.StopCoroutine(self.speedPotionCoroutineDict.pop(playerId))
+		else:
+			self.speedPotionBaseDict[playerId] = baseValue
+		# 第3参0=只改当前值不改默认值——阵亡重生后引擎按默认值恢复原速，加速不跨命
+		boostedValue = baseValue * (1.0 + config.SpeedPotionPercent / 100.0)
+		if not attrComp.SetAttrValue(attrType, boostedValue, 0):
+			self.SendMessageToPlayer(playerId, "§c加速药水未能生效")
+			logger.warning("[Gomoku] SetAttrValue失败: {} base={}".format(playerId, baseValue))
+			self.speedPotionBaseDict.pop(playerId, None)
+			self.speedPotionCoroutineDict.pop(playerId, None)
+			return
+		self.speedPotionCoroutineDict[playerId] = CoroutineMgr.StartCoroutine(
+			self.SpeedBoostExpire(playerId, baseValue))
+		if refreshed:
+			self.SendMessageToPlayer(playerId, "§b加速效果已刷新：再持续{}秒".format(config.SpeedPotionDuration))
+		else:
+			self.SendMessageToPlayer(playerId, "§b加速药水生效：移动速度提升{}%，持续{}秒".format(
+				config.SpeedPotionPercent, config.SpeedPotionDuration))
+		logger.info("[Gomoku] 加速药水: {} {}->{} 持续{}秒".format(
+			playerId, baseValue, boostedValue, config.SpeedPotionDuration))
+
+	def SpeedBoostExpire(self, playerId, baseValue):
+		"""加速药水到期：恢复基础速度。玩家可能已离线（组件创建失败只清登记，
+		SendMessageToPlayer自带异常保护）。若期间玩家阵亡重生过，引擎已把速度重置
+		回默认值，这里再写回baseValue通常等值无害"""
+		yield config.SpeedPotionDuration
+		self.speedPotionCoroutineDict.pop(playerId, None)
+		self.speedPotionBaseDict.pop(playerId, None)
+		attrComp = serverApi.GetEngineCompFactory().CreateAttr(playerId)
+		if attrComp:
+			attrComp.SetAttrValue(serverApi.GetMinecraftEnum().AttrType.SPEED, baseValue, 0)
+		self.SendMessageToPlayer(playerId, "§b加速药水效果已结束")
+		logger.info("[Gomoku] 加速结束，速度已恢复: {}".format(playerId))
+
+	def ClearAllSpeedBoosts(self):
+		"""终止所有进行中的加速效果并恢复基础速度（新一局开始时调用：背包已清空、
+		道具都作废，加速不该跨局）。玩家已离线时组件创建失败，只清登记"""
+		for playerId, coroutine in self.speedPotionCoroutineDict.items():
+			CoroutineMgr.StopCoroutine(coroutine)
+			baseValue = self.speedPotionBaseDict.get(playerId)
+			attrComp = serverApi.GetEngineCompFactory().CreateAttr(playerId)
+			if baseValue is not None and attrComp:
+				attrComp.SetAttrValue(serverApi.GetMinecraftEnum().AttrType.SPEED, baseValue, 0)
+		self.speedPotionCoroutineDict = {}
+		self.speedPotionBaseDict = {}
+
 	# ---------- 便携棋盘：铺扩展格 ----------
 
 	def HandleCellPlace(self, playerId, pos):
@@ -1380,10 +1547,76 @@ class GomokuServerSystem(ServerSystem):
 		itemCfg = config.ItemTable.get(self.GetCarriedItemName(attackerId))
 		if not itemCfg or itemCfg['type'] != 'weapon':
 			return
+		if itemCfg.get('dizzy'):
+			# 眩晕锤：零伤害（damage=0+isValid成对才生效），改为眩晕+缴械掉落
+			# （见HandleDizzyHammerHit）；锤中敌方即碎，同队/冷却目标上面已提前返回
+			args['damage'] = 0
+			args['isValid'] = 1
+			self.HandleDizzyHammerHit(attackerId, victimId)
+			if itemCfg.get('consumable') and self.ConsumeCarriedItem(attackerId):
+				self.Announce("§d眩晕锤碎裂！{}§d被砸得眼冒金星，道具散落一地！".format(
+					self.GetEntityName(victimId)))
+			return
 		args['damage'] = itemCfg.get('damage', config.DefaultWeaponDamage)
 		args['isValid'] = 1
 		if itemCfg.get('consumable') and self.ConsumeCarriedItem(attackerId):
 			self.Announce("§c{}出鞘！一击必杀！".format(itemCfg['name']))
+
+	# ---------- 眩晕锤 ----------
+
+	def HandleDizzyHammerHit(self, attackerId, victimId):
+		"""眩晕锤命中敌方玩家：目标不掉血（OnPlayerAttack里damage=0），但被眩晕
+		config.DizzyHammerStunSeconds 秒——原版效果组合：迟缓VII(移速-105%原地
+		锁死)+虚弱II(拳头打不出伤害)+反胃(眩晕画面)；同时背包道具全部掉在脚下
+		（DropPlayerInventory），眩晕期间拾取被拦截（OnPlayerTryTouch）防止
+		原地站桩秒捡回去。效果时长按整秒生效（AddEffectToEntity只收整秒）"""
+		stunSeconds = config.DizzyHammerStunSeconds
+		effectSeconds = int(round(stunSeconds))
+		try:
+			effectComp = serverApi.CreateComponent(victimId, config.Minecraft, config.EffectComponent)
+			if effectComp:
+				effectComp.AddEffectToEntity('slowness', effectSeconds, 6, True)
+				effectComp.AddEffectToEntity('weakness', effectSeconds, 1, True)
+				effectComp.AddEffectToEntity('nausea', effectSeconds, 0, True)
+			else:
+				logger.warning("[Gomoku] 创建effect组件失败: {}".format(victimId))
+		except Exception as e:
+			logger.warning("[Gomoku] 眩晕效果施加失败: {}".format(e))
+		self.dizzyStunUntilDict[victimId] = time.time() + stunSeconds
+		dropped = self.DropPlayerInventory(victimId)
+		logger.info("[Gomoku] 眩晕锤命中: {} -> {} (眩晕{}秒, 掉落{}件)".format(
+			attackerId, victimId, stunSeconds, dropped))
+
+	def DropPlayerInventory(self, playerId):
+		"""把玩家背包全部物品掉到脚下（眩晕锤的缴械）。只掉INVENTORY 36格
+		（已含手持位；装备/副手不动——道具都在背包里）。物品信息字典原样透传
+		（getUserData=True读取，保留耐久等状态）；掉落物不登记itemExpireDict——
+		它们本来就是被登记过的"在场"物品，只是换了存放位置。返回掉落件数"""
+		try:
+			posComp = serverApi.GetEngineCompFactory().CreatePos(playerId)
+			pos = posComp.GetPos() if posComp else None
+			if not pos:
+				logger.warning("[Gomoku] 读取被锤者位置失败: {}".format(playerId))
+				return 0
+			itemComp = serverApi.CreateComponent(playerId, config.Minecraft, config.ItemComponent)
+			levelItemComp = serverApi.CreateComponent(self.levelId, config.Minecraft, config.ItemComponent)
+			invItems = itemComp.GetPlayerAllItems(
+				serverApi.GetMinecraftEnum().ItemPosType.INVENTORY, True) or []
+			dropped = 0
+			for slot, itemDict in enumerate(invItems):
+				if not itemDict:
+					continue
+				# 掉落物组件用levelId创建（与SpawnItemEntity一致；levelId组件
+				# 只管世界侧生成，playerId组件只管背包读写）
+				if levelItemComp.SpawnItemToLevel(itemDict, config.MainDimensionId, pos):
+					itemComp.SetInvItemNum(slot, 0)
+					dropped += 1
+				else:
+					logger.warning("[Gomoku] 掉落物生成失败: slot={} {}".format(slot, self.GetItemName(itemDict)))
+			return dropped
+		except Exception as e:
+			logger.warning("[Gomoku] DropPlayerInventory 失败: {}".format(e))
+			return 0
 
 	# ---------- 阵亡与复活 ----------
 
@@ -1446,14 +1679,48 @@ class GomokuServerSystem(ServerSystem):
 		self.SendMessageToPlayer(playerId, "§c阵亡冷却中，§e{}§c秒后恢复行动".format(remaining))
 
 	def OnDamage(self, args):
-		"""阵亡冷却期间免疫一切伤害（防复活点被连杀蹲尸；伤害清零写法对照StartLogic等待区无敌）"""
-		if self.IsRespawnHeld(args.get('entityId')):
+		"""阵亡冷却期间免疫一切伤害（防复活点被连杀蹲尸；伤害清零写法对照StartLogic等待区无敌）；
+		转移符护盾：受到真实伤害时不落地，本体清零，全额转给最近的敌方玩家
+		（Hurt接口，伤害来源/击杀归属沿用本次攻击；环境伤害无来源时归护盾主人）"""
+		victimId = args.get('entityId')
+		if self.IsRespawnHeld(victimId):
 			args['damage'] = 0
+			return
+		if victimId not in self.transferShieldSet:
+			return
+		damage = args.get('damage') or 0
+		if damage <= 0:
+			return  # 没有真实伤害（如队友免伤清零）：护盾保留，等下一次
+		targetId = self.FindNearestEnemyPlayer(victimId)
+		if targetId is None:
+			return  # 场上没有可转移的敌人：护盾保留，本次伤害照常落在自己身上
+		# 护盾先失效再转移（若敌人也带护盾，由对方的护盾接手，不会来回弹）
+		self.transferShieldSet.discard(victimId)
+		args['damage'] = 0
+		srcId = args.get('srcId')
+		attackerId = srcId if srcId and srcId != '-1' else victimId
+		cause = args.get('cause') or 'entity_attack'
+		hurtComp = serverApi.GetEngineCompFactory().CreateHurt(targetId)
+		if not hurtComp or not hurtComp.Hurt(damage, cause, attackerId, None, True):
+			logger.warning("[Gomoku] 转移符伤害转移失败: {} -> {} damage={}".format(victimId, targetId, damage))
+			return
+		self.Announce("§d转移符生效！{}§d受到的§e{}点§d伤害转给了{}§d！".format(
+			self.GetPlayerName(victimId) or "玩家", int(round(damage)),
+			self.GetPlayerName(targetId) or "敌方玩家"))
+		logger.info("[Gomoku] 转移符生效: {} -> {} damage={} cause={} attacker={}".format(
+			victimId, targetId, damage, cause, attackerId))
 
 	def OnDelServerPlayer(self, args):
-		"""玩家退出：清掉阵亡冷却登记（倒计时协程下一轮自然结束）"""
+		"""玩家退出：清掉阵亡冷却/转移符护盾/加速药水登记（相关协程下一轮自然结束）"""
 		playerId = args.get('id')
 		self.respawnHoldUntilDict.pop(playerId, None)
+		self.transferShieldSet.discard(playerId)
+		self.speedPotionBaseDict.pop(playerId, None)
+		self.speedPotionUseTime.pop(playerId, None)
+		self.dizzyStunUntilDict.pop(playerId, None)
+		oldBoost = self.speedPotionCoroutineDict.pop(playerId, None)
+		if oldBoost is not None:
+			CoroutineMgr.StopCoroutine(oldBoost)
 		self.playerIds.discard(playerId)
 
 	def SetEngineRespawnPoint(self, playerId):
