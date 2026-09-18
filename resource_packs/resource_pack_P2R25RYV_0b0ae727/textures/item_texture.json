@@ -47,6 +47,9 @@
         "dizzy_hammer": {
             "textures": "textures/items/dizzy-hammer"
         },
+        "gomoku_manual": {
+            "textures": "textures/items/book_normal"
+        },
         "gomoku_board": {
             "textures": "textures/blocks/chess_base"
         }

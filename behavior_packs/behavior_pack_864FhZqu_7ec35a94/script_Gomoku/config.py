@@ -15,6 +15,10 @@ ScriptFolderName = "script_Gomoku"
 ServerSystemName = "GomokuServerSystem"
 ServerSystemClsPath = "gomokuServerSystem.GomokuServerSystem"
 
+# Client System（说明书弹窗，见gomokuClientSystem.py；modMain的InitClient注册）
+ClientSystemName = "GomokuClientSystem"
+ClientSystemClsPath = "gomokuClientSystem.GomokuClientSystem"
+
 # Engine（引擎组件名）
 Minecraft = "Minecraft"
 CommandComponent = "command"
@@ -46,6 +50,8 @@ DelServerPlayerEvent = "DelServerPlayerEvent"
 DamageEvent = "DamageEvent"
 #  Custom（服务端广播给所有客户端，供后续五子棋UI监听）
 GomokuGameResultEvent = "GomokuGameResultEvent"
+#  Custom（服务端 -> 客户端：请求打开说明书弹窗）
+ManualOpenEvent = "GomokuManualOpenEvent"
 
 # 跨Mod事件/系统名（★改=对应Mod的config同步改，且事件名是字符串字面量广播，需全局搜）
 StartLogicModName = "StartLogicMod"
@@ -163,13 +169,14 @@ BoardItemName = "wihzo:gomoku_board"
 AntiDamageItemName = "wihzo:anti_damage"
 SpeedPotionItemName = "wihzo:speed_up"
 DizzyHammerItemName = "wihzo:dizzy_hammer"
+ManualItemName = "wihzo:gomoku_manual"
 
 # ---------------------- 道具表 ----------------------
 # 所有道具的统一定义，后续开发新道具只加这里，系统按 type 分派行为：
 #   name:       短显示名（播报用；物品JSON里的display_name是带说明的详细版）
 #   type:       'piece' 棋子 / 'pickaxe' 采集镐 / 'weapon' 武器 / 'ink' 转化墨水 / 'bomb' 爆炸雷管 /
-#               'boardpick' 破盘镐 / 'swap' 换位符 / 'board' 便携棋盘 / 'transfer' 转移符 /
-#               'speed' 加速药水
+#               'boardpick' 破盘镐 / 'swap' 换位符 / 'board' 便携棋盘 / 'manual' 玩法说明书 /
+#               'transfer' 转移符 / 'speed' 加速药水
 #   consumable: 使用一次即销毁（耐久1）
 #   piece 专用:  fromOre 产出该棋子的矿 / wildcard 万能挡子（金棋子，落子不分颜色、只挡线不获胜）/
 #               square 方阵棋子（2x2铺子：点击格为左上角，越界/已占格忽略，见HandleSquarePlace）/
@@ -245,6 +252,9 @@ ItemTable = {
 	BoardItemName: {
 		"name": "便携棋盘", "type": "board",
 		"maxUses": 2,  # 可铺2格（★与beh JSON的minecraft:max_damage一致）
+	},
+	ManualItemName: {
+		"name": "玩法说明书", "type": "manual",
 	},
 }
 
@@ -447,6 +457,56 @@ RandomBlockSpawnConfig = {
 # ---------------------- 胜利条件 ----------------------
 # 连珠数（几子连珠获胜）
 WinRowLength = 5
+
+# ---------------------- 玩法说明书（进服即发放，右键打开） ----------------------
+# 进服（等待阶段，DelayGiveManual延迟1秒）就发一本——等待期即可翻阅；
+# 开局/clear清空背包后补发（对局中随时能翻书）。手持右键（含对空气）打开
+# 客户端弹窗：gomokuClientSystem收到ManualOpenEvent后PushScreen弹manualUI。
+# 客户端注册（对照LimitedRespawn的UI命名方式）
+ManualUIName = "gomokuManualUI"
+ManualUIPyClsPath = "manualUI.ManualUIScreen"
+ManualUIScreenDef = "gomokuManualUI.main"
+# 教程文案：每个元素一页（\n换行，§颜色代码可用）。只改文案不用动UI与逻辑
+ManualTextList = [
+	"§l§e■ 玩法目标\n"
+	"§r§f黑白双方分别向棋盘上落子，横、竖、斜任意方向\n"
+	"§f先连成 §e五子 §f的队伍立即获胜！\n\n"
+	"§f棋盘每局随机形状，棋子只能落在棋盘上\n\n"
+	"§f一局限时8分钟，到时间未分胜负则双方平局。\n",
+    "总游戏为5局3胜制\n",
+	"§l§e■ 采集\n"
+	"§r§f棋子是采集来的，不在背包里凭空产生：\n\n"
+	"§f普通棋子矿（近环）——须持 §b石镐 §f挖\n"
+	"§f硬化棋子矿（中环）——须持 §b铁镐 §f挖，落子更难被拆\n"
+	"§f金棋子矿（远环）——徒手可挖\n"
+	"§f使用镐采集§d问号方块 可以获得随机道具\n"
+	"§c注意：棋子最多同时携带2个，背包中持有2子时无法获得更多棋子哦",
+	"§l§e■ 落子与拆子\n"
+	"§r§f手持棋子右键棋盘基座即可落子（颜色=你的队伍）。\n\n"
+	"§f特殊棋子：\n"
+	"§f  §d方阵棋子 §f——一次铺下2x2四枚己方棋子\n"
+	"§f  §d陷阱棋子 §f——外观与普通棋子完全相同，\n"
+	"§f  被对手挖毁的瞬间炸死周围的人\n\n"
+	"§f盘上的棋子可以拆除，普通棋子须使用石镐、硬化须使用铁镐，\n"
+	"§f但是在盘上挖子比采集棋子慢得多而且不会获得棋子",
+	"§l§e■ 道具：中环\n"
+	"§r§d转化墨水 §f——右键敌方棋子，变成己方颜色\n"
+	"§d爆炸雷管 §f——右键棋盘摆出，3秒后引爆，\n"
+	"§f  炸掉3x3范围内的全部棋子（不管敌我）；\n"
+	"§f  引信期间可被挖掉拆除\n"
+	"§d破盘镐 §f——右键拆掉棋盘基座一格\n"
+	"§d便携棋盘 §f——右键铺一格新棋盘格（耐久2次），\n"
+	"§f  新格也能与主盘互相连线哦\n",
+	"§l§e■ 道具：远环\n"
+	"§r§d处决剑 §f——攻击玩家一击必杀（用一次即碎），\n"
+	"§f  死者会掉落全部携带物品\n"
+	"§d换位符 §f——右键与最近的\n"
+	"§f  敌方玩家互换位置，无距离限制\n\n"
+	"§f越好的道具刷新在棋盘越远处\n",
+	"§l§e■ 阵亡规则\n"
+	"§r§f死亡后会自动在棋盘附近复活。\n\n"
+	"§7—— 祝武运昌隆 ——",
+]
 
 # ---------------------- 比分记分牌（告示牌） ----------------------
 # 比分告示牌的世界坐标列表：编辑器里摆好告示牌后把坐标填进来（空列表=功能关闭）。

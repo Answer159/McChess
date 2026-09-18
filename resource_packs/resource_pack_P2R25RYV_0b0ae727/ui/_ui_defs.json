@@ -1,6 +1,7 @@
 {
     "ui_defs": [
         "ui/endLogicUI.json",
+        "ui/gomokuManualUI.json",
         "ui/limitedRespawnUI.json",
         "ui/skillUI.json",
         "ui/startLogicUI.json",

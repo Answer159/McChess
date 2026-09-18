@@ -1,0 +1,380 @@
+{
+  "bgImage": {
+    "anchor_from": "center",
+    "anchor_to": "center",
+    "controls": [],
+    "is_new_nine_slice": true,
+    "layer": 1,
+    "nineslice_size": 12,
+    "offset": [
+      0,
+      0
+    ],
+    "size": [
+      "100%",
+      "100%"
+    ],
+    "texture": "textures/ui/manual_bg",
+    "type": "image",
+    "visible": true
+  },
+  "closeButton@common.button": {
+    "$default_color": [
+      1,
+      1,
+      1
+    ],
+    "$default_texture": "textures/ui/manual_button",
+    "$hover_texture": "textures/ui/manual_button",
+    "$labelText": "关闭",
+    "$label_font_size": "normal",
+    "$pressed_button_name": "#gomokuManualUI.close",
+    "$pressed_texture": "textures/ui/manual_button",
+    "anchor_from": "top_right",
+    "anchor_to": "top_right",
+    "controls": [
+      {
+        "default": {
+          "layer": 0,
+          "nineslice_size": 4,
+          "texture": "$default_texture",
+          "type": "image"
+        }
+      },
+      {
+        "hover": {
+          "layer": 0,
+          "nineslice_size": 4,
+          "texture": "$hover_texture",
+          "type": "image"
+        }
+      },
+      {
+        "pressed": {
+          "layer": 0,
+          "nineslice_size": 4,
+          "texture": "$pressed_texture",
+          "type": "image"
+        }
+      },
+      {
+        "button_label": {
+          "color": "$default_color",
+          "font_size": "$label_font_size",
+          "layer": 5,
+          "shadow": false,
+          "text": "$labelText",
+          "text_alignment": "center",
+          "type": "label"
+        }
+      }
+    ],
+    "layer": 3,
+    "offset": [
+      "-4%",
+      "4%"
+    ],
+    "size": [
+      "12%",
+      "6%"
+    ],
+    "visible": true,
+    "button_mappings": [
+      {
+        "from_button_id": "button.menu_ok",
+        "to_button_id": "$pressed_button_name",
+        "mapping_type": "focused"
+      },
+      {
+        "from_button_id": "button.menu_select",
+        "to_button_id": "$pressed_button_name",
+        "mapping_type": "pressed"
+      }
+    ]
+  },
+  "nextButton@common.button": {
+    "$default_color": [
+      1,
+      1,
+      1
+    ],
+    "$default_texture": "textures/ui/manual_button",
+    "$hover_texture": "textures/ui/manual_button",
+    "$labelText": "下一页",
+    "$label_font_size": "normal",
+    "$pressed_button_name": "#gomokuManualUI.next",
+    "$pressed_texture": "textures/ui/manual_button",
+    "anchor_from": "bottom_right",
+    "anchor_to": "bottom_right",
+    "controls": [
+      {
+        "default": {
+          "layer": 0,
+          "nineslice_size": 4,
+          "texture": "$default_texture",
+          "type": "image"
+        }
+      },
+      {
+        "hover": {
+          "layer": 0,
+          "nineslice_size": 4,
+          "texture": "$hover_texture",
+          "type": "image"
+        }
+      },
+      {
+        "pressed": {
+          "layer": 0,
+          "nineslice_size": 4,
+          "texture": "$pressed_texture",
+          "type": "image"
+        }
+      },
+      {
+        "button_label": {
+          "color": "$default_color",
+          "font_size": "$label_font_size",
+          "layer": 5,
+          "shadow": false,
+          "text": "$labelText",
+          "text_alignment": "center",
+          "type": "label"
+        }
+      }
+    ],
+    "layer": 3,
+    "offset": [
+      "-8%",
+      "-6%"
+    ],
+    "size": [
+      "18%",
+      "7%"
+    ],
+    "visible": true,
+    "button_mappings": [
+      {
+        "from_button_id": "button.menu_ok",
+        "to_button_id": "$pressed_button_name",
+        "mapping_type": "focused"
+      },
+      {
+        "from_button_id": "button.menu_select",
+        "to_button_id": "$pressed_button_name",
+        "mapping_type": "pressed"
+      }
+    ]
+  },
+  "pageLabel": {
+    "anchor_from": "top_left",
+    "anchor_to": "top_left",
+    "auto_expand": false,
+    "color": [
+      0.7,
+      0.75,
+      0.85,
+      1
+    ],
+    "controls": [],
+    "font_size": "normal",
+    "layer": 2,
+    "offset": [
+      "6%",
+      "5%"
+    ],
+    "size": [
+      "20%",
+      "5%"
+    ],
+    "text": "1/1",
+    "text_alignment": "left",
+    "type": "label",
+    "visible": true
+  },
+  "prevButton@common.button": {
+    "$default_color": [
+      1,
+      1,
+      1
+    ],
+    "$default_texture": "textures/ui/manual_button",
+    "$hover_texture": "textures/ui/manual_button",
+    "$labelText": "上一页",
+    "$label_font_size": "normal",
+    "$pressed_button_name": "#gomokuManualUI.prev",
+    "$pressed_texture": "textures/ui/manual_button",
+    "anchor_from": "bottom_left",
+    "anchor_to": "bottom_left",
+    "controls": [
+      {
+        "default": {
+          "layer": 0,
+          "nineslice_size": 4,
+          "texture": "$default_texture",
+          "type": "image"
+        }
+      },
+      {
+        "hover": {
+          "layer": 0,
+          "nineslice_size": 4,
+          "texture": "$hover_texture",
+          "type": "image"
+        }
+      },
+      {
+        "pressed": {
+          "layer": 0,
+          "nineslice_size": 4,
+          "texture": "$pressed_texture",
+          "type": "image"
+        }
+      },
+      {
+        "button_label": {
+          "color": "$default_color",
+          "font_size": "$label_font_size",
+          "layer": 5,
+          "shadow": false,
+          "text": "$labelText",
+          "text_alignment": "center",
+          "type": "label"
+        }
+      }
+    ],
+    "layer": 3,
+    "offset": [
+      "8%",
+      "-6%"
+    ],
+    "size": [
+      "18%",
+      "7%"
+    ],
+    "visible": true,
+    "button_mappings": [
+      {
+        "from_button_id": "button.menu_ok",
+        "to_button_id": "$pressed_button_name",
+        "mapping_type": "focused"
+      },
+      {
+        "from_button_id": "button.menu_select",
+        "to_button_id": "$pressed_button_name",
+        "mapping_type": "pressed"
+      }
+    ]
+  },
+  "textLabel": {
+    "anchor_from": "top_left",
+    "anchor_to": "top_left",
+    "auto_expand": false,
+    "color": [
+      1,
+      1,
+      1,
+      1
+    ],
+    "controls": [],
+    "font_size": "normal",
+    "layer": 2,
+    "line_padding": 2,
+    "offset": [
+      "7%",
+      "14%"
+    ],
+    "size": [
+      "86%",
+      "72%"
+    ],
+    "text": "",
+    "text_alignment": "left",
+    "type": "label",
+    "visible": true
+  },
+  "titleLabel": {
+    "anchor_from": "top_middle",
+    "anchor_to": "top_middle",
+    "auto_expand": false,
+    "color": [
+      1,
+      0.85,
+      0.4,
+      1
+    ],
+    "controls": [],
+    "font_size": "large",
+    "layer": 2,
+    "offset": [
+      0,
+      "4%"
+    ],
+    "shadow": true,
+    "size": [
+      "80%",
+      "8%"
+    ],
+    "text": "玩法说明书",
+    "text_alignment": "center",
+    "type": "label",
+    "visible": true
+  },
+  "main@common.base_screen": {
+    "button_mappings": [
+      {
+        "from_button_id": "button.menu_cancel",
+        "to_button_id": "#gomokuManualUI.escClose",
+        "mapping_type": "global"
+      },
+      {
+        "from_button_id": "button.menu_inventory_cancel",
+        "to_button_id": "#gomokuManualUI.escClose",
+        "mapping_type": "global"
+      }
+    ],
+    "controls": [
+      {
+        "manualPanel": {
+          "anchor_from": "center",
+          "anchor_to": "center",
+          "controls": [
+            {
+              "bg@gomokuManualUI.bgImage": {}
+            },
+            {
+              "titleLabel@gomokuManualUI.titleLabel": {}
+            },
+            {
+              "pageLabel@gomokuManualUI.pageLabel": {}
+            },
+            {
+              "textLabel@gomokuManualUI.textLabel": {}
+            },
+            {
+              "prevButton@gomokuManualUI.prevButton": {}
+            },
+            {
+              "nextButton@gomokuManualUI.nextButton": {}
+            },
+            {
+              "closeButton@gomokuManualUI.closeButton": {}
+            }
+          ],
+          "layer": 0,
+          "offset": [
+            0,
+            0
+          ],
+          "size": [
+            "56%",
+            "76%"
+          ],
+          "type": "panel",
+          "visible": true
+        }
+      }
+    ]
+  },
+  "namespace": "gomokuManualUI"
+}

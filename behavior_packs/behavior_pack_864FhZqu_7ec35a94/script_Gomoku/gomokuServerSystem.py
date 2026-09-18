@@ -102,6 +102,8 @@ class GomokuServerSystem(ServerSystem):
 		# 拦截拾取（见OnPlayerTryTouch）——道具被锤落在脚下，不拦着会原地秒捡回去；
 		# 移速锁死等表现由原版效果承担（见HandleDizzyHammerHit），不在这里做
 		self.dizzyStunUntilDict = {}
+		# 说明书打开去重（同双入口问题，见RequestOpenManual）
+		self.manualOpenTime = {}
 		# 阵亡冷却：playerId -> 解禁时刻（time.time()秒）。WorldMod的immediate_respawn规则
 		# 使阵亡者不弹原版死亡界面、自动在队伍复活点（棋盘附近）重生；这里封锁其行动到解禁
 		# （时长=config.DeathRespawnHoldSeconds，倒计时见RespawnCountdown）
@@ -184,9 +186,17 @@ class GomokuServerSystem(ServerSystem):
 		# 无床玩家默认按世界出生点重生，本图出生点在远处未加载区块，重生会卡死
 		# 在"正在重生"——进服就把复活点改设到棋盘外沿（见SetEngineRespawnPoint）
 		self.SetEngineRespawnPoint(playerId)
+		# 说明书等待阶段就发：进服即得（延迟1秒，进服事件时背包组件未必就绪）
+		CoroutineMgr.StartCoroutine(self.DelayGiveManual(playerId))
 		if not self.boardBuilt:
 			# 等待阶段就尝试铺盘；组件/世界可能未就绪，延迟1秒（避初始化竞态）
 			CoroutineMgr.StartCoroutine(self.DelayBuildBoard())
+
+	def DelayGiveManual(self, playerId):
+		"""进服发说明书（等待阶段就能翻阅）；重连/重复进服时背包已有则不重复发"""
+		yield -30
+		if playerId in self.playerIds and not self.PlayerHasItem(playerId, config.ManualItemName):
+			self.GiveItemToPlayer(playerId, config.ManualItemName)
 
 	def DelayBuildBoard(self):
 		yield -config.BoardBuildDelaySeconds * 30
@@ -200,6 +210,10 @@ class GomokuServerSystem(ServerSystem):
 		if config.ClearInventoryOnRoundStart:
 			self.RunCommand('/clear @a')
 			self.Announce("§e新对局开始，已清空背包")
+		# /clear会把进服发的说明书一并清掉——清完补发（对局中随时能翻书；
+		# 发放在等待阶段就做过，见DelayGiveManual，这里只是补回被清空的那本）
+		for playerId in self.playerIds:
+			self.GiveItemToPlayer(playerId, config.ManualItemName)
 		self.announceThrottleTime = {}
 		self.respawnHoldUntilDict = {}  # 上一局残留的阵亡冷却不带到下一局
 		self.transferShieldSet = set()  # 转移符护盾不跨局（道具都回收了，护盾跟着作废）
@@ -701,6 +715,11 @@ class GomokuServerSystem(ServerSystem):
 		if None in pos or not playerId:
 			logger.warning("[Gomoku] 物品使用事件字段异常: {}".format(args))
 			return
+		if itemName == config.ManualItemName:
+			# 说明书：看教程不算行动，阵亡冷却中照样能翻书（对空气右键走OnItemTryUse，
+			# 两条入口同一去处，去重见RequestOpenManual）
+			self.RequestOpenManual(playerId)
+			return
 		if self.IsRespawnHeld(playerId):
 			self.TellRespawnHeld(playerId)
 			return
@@ -750,12 +769,16 @@ class GomokuServerSystem(ServerSystem):
 	def OnItemTryUse(self, args):
 		"""右键尝试使用物品的入口（ServerItemTryUseEvent，字段对照官方GodChef模板：
 		playerId/itemDict/cancel，物品名取itemDict['newItemName']）。本事件不依赖
-		方块目标——对空气右键也触发，专门接住换位符（其余物品须要方块坐标的
+		方块目标——对空气右键也触发，接住换位符和说明书（其余物品须要方块坐标的
 		交互都走OnItemUseOn，这里不做通用分派，也不cancel）"""
 		playerId = args.get('playerId')
 		itemName = (args.get('itemDict') or {}).get('newItemName')
 		if not playerId or not itemName:
 			logger.warning("[Gomoku] 物品尝试使用事件字段异常: {}".format(args))
+			return
+		if itemName == config.ManualItemName:
+			# 说明书：看教程不算行动，阵亡冷却中照样能翻书
+			self.RequestOpenManual(playerId)
 			return
 		if itemName == config.SwapItemName:
 			if self.IsRespawnHeld(playerId):
@@ -778,6 +801,17 @@ class GomokuServerSystem(ServerSystem):
 			self.HandleSpeedPotionUse(playerId)
 			return
 		# 其他物品的右键不在本事件处理（避免与OnItemUseOn双触发）
+
+	def RequestOpenManual(self, playerId):
+		"""通知该玩家的客户端打开说明书弹窗（ManualOpenEvent -> PushScreen，见gomokuClientSystem）。
+		同一次右键OnItemUseOn/OnItemTryUse可能都到（同换位符的双入口问题）——
+		1秒内只开一次，避免叠出两层窗口"""
+		now = time.time()
+		if now - self.manualOpenTime.get(playerId, 0) < 1.0:
+			return
+		self.manualOpenTime[playerId] = now
+		data = self.CreateEventData()
+		self.NotifyToClient(playerId, config.ManualOpenEvent, data)
 
 	def HandlePlace(self, playerId, pos):
 		"""手持棋子物品右键棋盘基座（主盘或扩展格）-> 落子（占用/终局校验与
@@ -1722,6 +1756,7 @@ class GomokuServerSystem(ServerSystem):
 		if oldBoost is not None:
 			CoroutineMgr.StopCoroutine(oldBoost)
 		self.playerIds.discard(playerId)
+		self.manualOpenTime.pop(playerId, None)
 
 	def SetEngineRespawnPoint(self, playerId):
 		"""把玩家的引擎复活点设到棋盘外沿。无床玩家默认在世界出生点重生，本图出生点
@@ -1893,6 +1928,19 @@ class GomokuServerSystem(ServerSystem):
 		except Exception as e:
 			logger.warning("[Gomoku] CountCarriedPieces 失败: {}".format(e))
 			return -1
+
+	def PlayerHasItem(self, playerId, itemName):
+		"""查玩家背包（含副手）是否已有某物品——说明书进服发放防重复用；
+		API异常返回False按"没有"处理（宁可多发一本不可漏发）"""
+		try:
+			itemComp = serverApi.CreateComponent(playerId, config.Minecraft, config.ItemComponent)
+			posType = serverApi.GetMinecraftEnum().ItemPosType
+			playerItems = (itemComp.GetPlayerAllItems(posType.INVENTORY) or []) \
+				+ (itemComp.GetPlayerAllItems(posType.OFFHAND) or [])
+			return any(item and self.GetItemName(item) == itemName for item in playerItems)
+		except Exception as e:
+			logger.warning("[Gomoku] PlayerHasItem 失败: {}".format(e))
+			return False
 
 	def AnnounceThrottled(self, playerId, kind, text):
 		"""按(玩家,类型)节流的播报：事件连续触发（站在物品上反复拾取/长按挖基座）也不刷屏"""
