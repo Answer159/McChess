@@ -119,16 +119,34 @@ class TrapMode(GameModeBase):
 		self.tipTimeDict.pop(playerId, None)
 
 	def OnPlayerDie(self, playerId):
-		"""阵亡：清掉"上一个安全格"（否则复活后第一次踩雷会被弹回死亡现场），
-		并在引擎重生流程走完后把人拉到棋盘边的安全区"""
+		"""阵亡：清掉"上一个安全格"（否则复活后第一次踩雷会被弹回死亡现场）。
+		把重生的人拉到棋盘边安全圈不在这里做——死亡后数帧是猜重生何时走完，
+		猜早了会被后来的传送覆盖（实测：LimitedRespawn在重生落地时把人传到
+		队伍复活点，玩家就留在了经典模式的复活位置）。真正的信号是
+		OnPlayerRespawnFinish（引擎重生落地的引擎事件）"""
 		self.lastSafeCellDict.pop(playerId, None)
-		CoroutineMgr.StartCoroutine(self.TeleportAfterRespawn(playerId))
 
-	def TeleportAfterRespawn(self, playerId):
-		yield -trapConfig.RespawnTeleportDelayFrames
+	def OnPlayerRespawnFinish(self, playerId):
+		"""重生落地（PlayerRespawnFinishServerEvent）：LimitedRespawn此刻（或
+		稍后几帧内）会把人传到队伍复活点——经典模式的复活位置，离棋盘很远。
+		这里延迟几帧再把人拉到棋盘边安全圈：跨mod事件监听顺序不保证谁先
+		谁后，晚它几帧稳定压过它的传送（DeathRespawnHoldSeconds的行动封锁
+		期间人动不了，晚几帧也无感）"""
+		CoroutineMgr.StartCoroutine(self.DelayTeleportAfterRespawn(playerId))
+
+	def DelayTeleportAfterRespawn(self, playerId):
+		"""重生落地后延迟传送（见OnPlayerRespawnFinish）。SetFootPos失败
+		（刚落地组件未就绪等）隔RespawnTeleportRetryFrames帧再试一次"""
+		yield -trapConfig.RespawnFinishTeleportFrames
 		cell = self.GetSafeCell()
-		if self.SetFootPos(playerId, self.CellFootPos(cell)):
+		footPos = self.CellFootPos(cell)
+		if self.SetFootPos(playerId, footPos):
 			self.lastSafeCellDict[playerId] = cell
+			return
+		yield -trapConfig.RespawnTeleportRetryFrames
+		if self.SetFootPos(playerId, footPos):
+			self.lastSafeCellDict[playerId] = cell
+			logger.info("[Gomoku] 陷阱模式：重生者已落位安全圈 {}（重试后成功）".format(cell))
 
 	def DelayJoinTeleport(self, playerId):
 		"""进图落位：延迟读坐标（刚进服可能还没就绪），离棋盘超过

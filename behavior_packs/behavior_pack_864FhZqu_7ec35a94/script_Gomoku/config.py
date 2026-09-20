@@ -55,6 +55,11 @@ GamepadStickClientEvent = "OnGamepadStickClientEvent"
 # 屏幕点击松手（客户端引擎事件，仅移动端/F11触发；假摇杆用它判定拖动结束）
 TapOrHoldReleaseClientEvent = "TapOrHoldReleaseClientEvent"
 PlayerDieEvent = "PlayerDieEvent"
+# 引擎重生流程走完（玩家已落地）：陷阱模式用这个时机把重生的人拉回棋盘边
+# 安全圈——LimitedRespawn在同事件的回调里会把人传到队伍复活点（经典模式的
+# 复活行为），跨mod监听顺序不保证谁先，模式那边延迟几帧再传稳定压过它
+# （见trapMode.DelayTeleportAfterRespawn）
+PlayerRespawnFinishServerEvent = "PlayerRespawnFinishServerEvent"
 DelServerPlayerEvent = "DelServerPlayerEvent"
 DamageEvent = "DamageEvent"
 # 实体（含玩家）尝试放置方块：陷阱模式用它拦住"往陷阱格上放方块搭桥"

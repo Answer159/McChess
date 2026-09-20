@@ -188,6 +188,8 @@ class GomokuServerSystem(ServerSystem):
 		self.ListenForEvent(serverApi.GetEngineNamespace(), serverApi.GetEngineSystemName(),
 			config.PlayerDieEvent, self, self.OnPlayerDie)
 		self.ListenForEvent(serverApi.GetEngineNamespace(), serverApi.GetEngineSystemName(),
+			config.PlayerRespawnFinishServerEvent, self, self.OnPlayerRespawnFinish)
+		self.ListenForEvent(serverApi.GetEngineNamespace(), serverApi.GetEngineSystemName(),
 			config.DelServerPlayerEvent, self, self.OnDelServerPlayer)
 		self.ListenForEvent(serverApi.GetEngineNamespace(), serverApi.GetEngineSystemName(),
 			config.DamageEvent, self, self.OnDamage)
@@ -221,6 +223,8 @@ class GomokuServerSystem(ServerSystem):
 			config.ServerPlayerTryTouchEvent, self, self.OnPlayerTryTouch)
 		self.UnListenForEvent(serverApi.GetEngineNamespace(), serverApi.GetEngineSystemName(),
 			config.PlayerDieEvent, self, self.OnPlayerDie)
+		self.UnListenForEvent(serverApi.GetEngineNamespace(), serverApi.GetEngineSystemName(),
+			config.PlayerRespawnFinishServerEvent, self, self.OnPlayerRespawnFinish)
 		self.UnListenForEvent(serverApi.GetEngineNamespace(), serverApi.GetEngineSystemName(),
 			config.DelServerPlayerEvent, self, self.OnDelServerPlayer)
 		self.UnListenForEvent(serverApi.GetEngineNamespace(), serverApi.GetEngineSystemName(),
@@ -2173,8 +2177,9 @@ class GomokuServerSystem(ServerSystem):
 		holdSeconds = config.DeathRespawnHoldSeconds
 		if not playerId:
 			return
-		# 玩法模式的阵亡钩子要先走（与阵亡冷却是否开着无关）：陷阱模式靠它把
-		# 重生的人挪到棋盘边的安全区，引擎复活点再准也可能落在陷阱格上
+		# 玩法模式的阵亡钩子要先走（与阵亡冷却是否开着无关）：陷阱模式靠它清掉
+		# 阵亡者的"最近安全格"（防复活后第一次踩雷被弹回死亡现场）；把重生的人
+		# 拉到棋盘边安全区不在这里——引擎重生落地的信号是OnPlayerRespawnFinish
 		self.gameMode.OnPlayerDie(playerId)
 		if holdSeconds <= 0:
 			return
@@ -2268,6 +2273,16 @@ class GomokuServerSystem(ServerSystem):
 			self.GetPlayerName(srcId) or "玩家"))
 		logger.info("[Gomoku] 反伤药水生效: {} -> {} damage={} cause={}".format(
 			victimId, srcId, damage, cause))
+
+	def OnPlayerRespawnFinish(self, args):
+		"""引擎重生流程走完（PlayerRespawnFinishServerEvent，玩家已在引擎复活点
+		落地）：转发给玩法模式。陷阱模式靠这个时机把重生的人从队伍复活点拉回
+		棋盘边安全圈——LimitedRespawn在同事件的回调里会把人传到队伍复活点
+		（经典模式的复活行为，离棋盘很远），它先被调还是我们先不确定（跨mod
+		监听顺序不保证），模式那边延迟几帧再传稳定压过它"""
+		playerId = args.get('playerId')
+		if playerId:
+			self.gameMode.OnPlayerRespawnFinish(playerId)
 
 	def OnDelServerPlayer(self, args):
 		"""玩家退出：清掉阵亡冷却/反伤药水护盾/加速药水/乱斗棋子值登记（相关协程

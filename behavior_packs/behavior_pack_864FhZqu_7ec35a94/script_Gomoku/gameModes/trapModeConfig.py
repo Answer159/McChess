@@ -64,9 +64,12 @@ TriggerMaxHeight = 1.6
 CheckIntervalFrames = 2
 # 同一名玩家的提示（踩雷/禁止放置）最短间隔（秒），防刷屏
 TipCooldownSeconds = 2
-# 阵亡后延迟多少帧把玩家拉到安全区（30帧=1秒）：等引擎把重生流程走完再传送，
-# 否则会被引擎的重生落点覆盖
-RespawnTeleportDelayFrames = 30
+# 重生落地（PlayerRespawnFinishServerEvent）后延迟多少帧把玩家拉回棋盘边
+# 安全圈：LimitedRespawn在同事件的回调里会把人传到队伍复活点（经典模式的
+# 复活位置，离棋盘很远），跨mod监听顺序不保证谁先被调，晚它几帧稳定压过；
+# 传送失败（刚落地组件未就绪等）再等 RespawnTeleportRetryFrames 帧重试一次
+RespawnFinishTeleportFrames = 3
+RespawnTeleportRetryFrames = 15
 
 # ---------------------- 进场与开局落位 ----------------------
 # 进图落位：世界出生点在远处未加载区块，刚进图的玩家离棋盘很远。进图后延迟

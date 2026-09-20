@@ -33,6 +33,7 @@ class GameModeBase(object):
 	  OnPlayerAdd       玩家进服
 	  OnPlayerRemove    玩家退服
 	  OnPlayerDie       玩家阵亡
+	  OnPlayerRespawnFinish  玩家重生落地（引擎复活点与各系统的重生传送之后）
 	  OnExit            系统销毁
 	  PickSpawnColumn   资源刷新取点（返回 (x, z) 或 None=本次跳过）
 	  CanPlaceBlock     玩家能否在此放置方块（False=拦截）
@@ -73,6 +74,13 @@ class GameModeBase(object):
 		pass
 
 	def OnPlayerDie(self, playerId):
+		pass
+
+	def OnPlayerRespawnFinish(self, playerId):
+		"""玩家重生落地（宿主转发的PlayerRespawnFinishServerEvent：引擎复活点
+		与各系统的重生传送都已完成/进行中）。陷阱模式用这个时机把人拉回棋盘
+		边安全圈——LimitedRespawn此刻会把人传到队伍复活点，那是经典模式的
+		复活位置，离棋盘很远"""
 		pass
 
 	def OnExit(self):

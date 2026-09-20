@@ -230,6 +230,7 @@
 | `OnRoundStart()` | `OnRoundStart` 里、**启动刷新协程之前**（随机模式的重掷/换对象也在这一步，`SwitchGameModeForRound`） | 本局场地准备（陷阱模式在这里撒生成点、长路径；地面原样不动） |
 | `OnTick()` | `OnTickServer` | 每帧逻辑（陷阱模式的踩雷检查） |
 | `OnPlayerAdd/Remove/Die(playerId)` | 对应的引擎事件处理里 | 玩家进退场与阵亡 |
+| `OnPlayerRespawnFinish(playerId)` | 宿主的 `PlayerRespawnFinishServerEvent` 转发 | 玩家重生落地（陷阱模式把人从队伍复活点拉回安全圈） |
 | `PickSpawnColumn(inner, outer, angleMin, angleMax)` | `SpawnAtRing` / `SpawnTierItem` / `SpawnRandomBlock` | **资源落点唯一入口**，返回 `(x, z)` 或 `None`（=本次刷新跳过）。默认实现就是原来那段"环上随机取点" |
 | `CanPlaceBlock(entityId, x, y, z)` | `ServerEntityTryPlaceBlockEvent` + `HandleCellPlace` | 放置表决，返回 `False` 即取消（引擎事件里置 `args['cancel']=True`） |
 | `GetRespawnPos()` | `GetEngineRespawnPos` | 模式自定义复活点；返回 `None` 走原来的棋盘外沿算法 |
@@ -252,7 +253,7 @@
 | 跳跃 | 只判定站在该列地表上的人（`abs(y-surfaceY) <= TriggerMaxHeight`=1.6，高于原版跳跃峰值约 1.25），所以蹦跳、疾跑跳都躲不过雷区。想允许"跳过一格陷阱"就把这个值调小 |
 | 建造限制 | **陷阱格所在的整条竖列**禁止放任何方块（不限高度）——否则搭一条方块桥就能无视整片雷区。便携棋盘走的是道具逻辑、不过引擎放置事件，所以 `HandleCellPlace` 里补了一次同样的表决 |
 | 资源刷新 | 只在**安全格（=路径格）**上刷，且要求该列地表**实心可站**（`SpawnRequireSolidGround`：树叶/树干/水面不算——宿主 `FindSurfaceY` 含树叶，不过滤矿石和道具会刷在树冠顶上够不着；过滤按格缓存，正冒岩浆的列也被顺带滤掉）；**安全区一律不刷**（需求明确："棋盘安全区不要生成任何棋子和道具"）。主 config 的环半径（最远 35 格）按 `SpawnRadiusSourceRange` 比例**重映射**进 `[安全圈外沿+1, AreaRadius]`，`RemapSpawnRadius=False` 则改为直接夹住——不重映射会让中环和外环全挤在最外圈，"距离即价格"的层次就没了。`angleRange`（黑白半区那套切法）照旧生效 |
-| 死亡复活 | `GetRespawnPos()` 把引擎复活点压到安全圈上；阵亡时还会延迟 `RespawnTeleportDelayFrames` 帧再传送一次（引擎重生流程走完之后），并清掉"上一个安全格"，免得复活后第一次踩雷被弹回死亡现场。重开一局/退出模式前会显式把还亮着的岩浆复原掉（不再整平重铺，残留岩浆必须收回） |
+| 死亡复活 | `GetRespawnPos()` 把引擎复活点压到安全圈上；重生落地（`PlayerRespawnFinishServerEvent`）后延迟 `RespawnFinishTeleportFrames` 帧把人拉回安全圈——LimitedRespawn 会在重生落地时把人传到队伍复活点（经典模式的复活位置，离棋盘很远），跨mod监听顺序不保证谁先被调，晚它几帧稳定压过（失败隔 `RespawnTeleportRetryFrames` 帧重试一次）；阵亡时清掉"上一个安全格"，免得复活后第一次踩雷被弹回死亡现场。重开一局/退出模式前会显式把还亮着的岩浆复原掉（不再整平重铺，残留岩浆必须收回） |
 | 进场/开局落位 | 世界出生点在远处未加载区块：进图后延迟 `JoinTeleportDelayFrames` 帧查一次位置，离棋盘超过 `JoinTeleportRing`=50 格（切比雪夫）就把人拉进安全圈（等待区约35格、队伍落点16~31格，都在阈值内不会被误拉，StartLogic 的 lobby 流程不受影响）；开局时 StartLogic 先把玩家传到队伍落点，`RoundStartTeleportDelayFrames`=45 帧后陷阱模式再把全体拉进安全圈——开局就站在棋盘边上而不是隔着整片雷区。落位点=安全圈外沿随机一格（每人分开站），并记入"最近安全格" |
 
 **为什么不用"先随机陷阱、再挖路"**：那样要反复检查连通性，还可能把资源刷在孤岛上。先路后陷阱是一次成型、零重试的写法——生成点挑选、路径行走、取点全部有步数/候选上限，开局不会卡住主线程。
