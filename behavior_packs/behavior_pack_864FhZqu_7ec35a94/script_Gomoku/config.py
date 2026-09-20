@@ -595,7 +595,15 @@ RandomBlockPoolDict = {
 	DetonatorItemName: 20,
 	BoardItemName: 10,
 	ExecutionSwordName: 10,
-	# 笔刷：唯一获取途径，极低概率（1/83 ≈ 1.2%）。白送一局胜场，故刻意做成
+	# 补进问号箱的6件（原先只在分级刷新环出，问号箱抽不到）——权重是
+	# 占位默认值，概率自行调配
+	PickaxeBoardName: 10,
+	SpeedPotionItemName: 10,
+	ChaosPotionItemName: 10,
+	SwapItemName: 5,
+	ReflectPotionItemName: 5,
+	DizzyHammerItemName: 5,
+	# 笔刷：唯一获取途径，极低概率（1/118 ≈ 0.8%）。白送一局胜场，故刻意做成
 	# "开一百个问号方块才见一次"的彩票；调高这个数就是调高出率
 	BrushItemName: 1,
 	# 吞噬黑洞：全盘清子的大杀器，只走问号方块（权重1=与处决剑并列最稀有档，
