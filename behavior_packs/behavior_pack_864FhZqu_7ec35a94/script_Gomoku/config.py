@@ -15,6 +15,11 @@ ScriptFolderName = "script_Gomoku"
 ServerSystemName = "GomokuServerSystem"
 ServerSystemClsPath = "gomokuServerSystem.GomokuServerSystem"
 
+# Client System（比分文字板专用：TextBoard是纯客户端组件，服务端没有这套API，
+# 所以本Mod必须有一个客户端系统才能把比分立在世界里，见gomokuClientSystem）
+ClientSystemName = "GomokuClientSystem"
+ClientSystemClsPath = "gomokuClientSystem.GomokuClientSystem"
+
 # Engine（引擎组件名）
 Minecraft = "Minecraft"
 CommandComponent = "command"
@@ -44,8 +49,21 @@ ScriptTickServerEvent = "OnScriptTickServer"
 PlayerDieEvent = "PlayerDieEvent"
 DelServerPlayerEvent = "DelServerPlayerEvent"
 DamageEvent = "DamageEvent"
+# 实体（含玩家）尝试放置方块：陷阱模式用它拦住"往陷阱格上放方块搭桥"
+# （args['cancel']=True 即取消放置，见OnEntityTryPlaceBlock）
+ServerEntityTryPlaceBlockEvent = "ServerEntityTryPlaceBlockEvent"
+# Client Event
+#  Engine（客户端就绪信号：比分文字板在此之后延迟创建，见gomokuClientSystem）
+UiInitFinishedEvent = "UiInitFinished"
+
 #  Custom（服务端广播给所有客户端，供后续五子棋UI监听）
 GomokuGameResultEvent = "GomokuGameResultEvent"
+# 比分刷新（服务端 -> 客户端）：data['rows'] = [[整行文字, RGBA四元组], ...]，
+# 排版与颜色都在服务端算好（见BuildScoreBoardData），客户端只按行建板
+GomokuScoreBoardEvent = "GomokuScoreBoardEvent"
+# 索要当前比分（客户端 -> 服务端）：客户端把板建好后主动请求一次，
+# 让晚进服/重连的玩家不用等到下一局结算才看到比分（见OnScoreBoardRequest）
+GomokuScoreRequestEvent = "GomokuScoreRequestEvent"
 
 # 跨Mod事件/系统名（★改=对应Mod的config同步改，且事件名是字符串字面量广播，需全局搜）
 StartLogicModName = "StartLogicMod"
@@ -56,16 +74,40 @@ EndLogicServerSystemName = "EndLogicServerSystem"
 TeamModName = "TeamMod"
 TeamServerSystemName = "TeamServerSystem"
 
+# ---------------------- 玩法模式（模式工厂） ----------------------
+# 本局用哪个玩法模式。模式之间零耦合：五子棋本体（棋盘/落子/判胜/道具）共用，
+# 模式只负责"地形怎么铺、资源刷在哪、能不能放方块、死后在哪重生、每帧查什么"
+# 这几个钩子（见gameModes/baseMode.py）。可选值来自gameModes/modeFactory.py的
+# 注册表；各模式自己的参数在各自的配置文件里，与本文件互不干扰：
+#   "classic" 经典模式：地图原生地形，资源在环形区域随机刷（模式框架之前的行为）
+#   "trap"    陷阱模式：棋盘外整平成一片伪装地面，只有通往道具生成点的路是实心的，
+#             踩到路外的格子 -> 变岩浆+掉血+弹回上一个实心格（参数见
+#             gameModes/trapModeConfig.py：陷阱区半边长/安全圈/路径条数/岩浆时长…）
+# ★改完重进地图生效；写成没注册的名字会记警告并退回"classic"
+GameMode = "trap"
+
 # ---------------------- 棋盘 ----------------------
 # 棋盘中心（唯一事实来源）。编辑器里移动棋盘后，把Anchor新坐标同步到这里即可。
 # 注意：不能在运行时读 db/presets.json 取Anchor坐标——游戏加载世界后引擎会把
 # virtual预设消耗掉（落成方块后清空该文件），脚本读到的永远是空列表（已实测）；
 # ModSDK也没有查询预设坐标的API，Anchor方块本体又是普通泥土无法扫描识别。
 BoardCenter = (1871, 62, 556)
-# 棋盘边长（格数），实际铺设为 BoardSize x BoardSize 的基座方阵（随机化开启时
-# 是最大范围，边缘会随机缺格，见下方"棋盘随机化"），基座层会覆盖掉Anchor方块
-# ★须为奇数（棋盘才有正中心）；改动后资源环最小内半径须 > BoardSize/2，否则物品会掉在棋盘上
+# 棋盘基础边长（格数）：2人局的实际边长。多人乱斗按人数扩容（见下方
+# "PvPvP多人对战"），实际铺设边长运行时由gomokuServerSystem计算。
+# ★须为奇数（棋盘才有正中心）；资源环内半径运行时会按实际边长动态抬升，
+# 不必为扩容手改（见SpawnAtRing等）
 BoardSize = 9
+
+# ---------------------- PvPvP多人对战（乱斗） ----------------------
+# 不做黑白两队对抗：每个玩家自成一方（引擎里每人一个棋子值1~FFAMaxPlayers，
+# 先连五子的"那个玩家"获胜；棋石外观暂统一用黑棋石，颜色区分以后再做）。
+# 棋盘随人数扩容：2人局=BoardSize基础边长，每多1名玩家边长+2
+# （3人11、4人13、5人15、6人17、7人19），开局按在线人数计算。
+# FFAMaxPlayers：乱斗最多支持的玩家数（引擎棋子值1~7，超出者本局旁观，
+# 下一局开始时重新分配）。★同时改需同步：gomokuServerSystem的GOMOKU_GOLD
+# （须避开1~FFAMaxPlayers的取值区间）
+FFAMaxPlayers = 7
+BoardSizePerExtraPlayer = 2
 
 # ---------------------- 棋盘随机化 ----------------------
 # True时每局重新生成棋盘形状：中心不动，BoardSize见方范围内按概率随机缺格，
@@ -133,16 +175,11 @@ StoneGoldName = "wihzo:gomoku_stone_gold"
 # 已点燃的雷管方块（TNT外观；右键棋盘摆出，BombFuseSeconds秒后引爆，
 # 引爆前被挖掉=拆除）。名字须与netease_blocks/下JSON一致
 DetonatorBlockName = "wihzo:gomoku_detonator_block"
-# 全部棋石方块集合（挖掘时按棋盘格处理）
+# 棋石名集合（挖掘时按棋盘格处理；金棋石单独判）。乱斗模式棋石外观统一用黑棋石，
+# 棋子归属不再看方块（方块不携带归属信息），以引擎网格里的棋子值为准（见HandleInkUse）
 StoneBlockNameSet = {
     StoneBlackName, StoneWhiteName, StoneGoldName,
     StoneBlackHardenedName, StoneWhiteHardenedName,
-}
-# 棋石名 -> 所属阵营（墨水转化用：判断右键到的是敌方的子还是己方的子）
-StoneSideDict = {
-    StoneBlackName: "black", StoneBlackHardenedName: "black",
-    StoneWhiteName: "white", StoneWhiteHardenedName: "white",
-    StoneGoldName: "gold",
 }
 
 # ---------------------- 自定义物品（名字须与行为包netease_items_beh/、
@@ -160,16 +197,17 @@ InkItemName = "wihzo:gomoku_ink"
 DetonatorItemName = "wihzo:gomoku_detonator"
 SwapItemName = "wihzo:gomoku_swap"
 BoardItemName = "wihzo:gomoku_board"
-AntiDamageItemName = "wihzo:anti_damage"
+ReflectPotionItemName = "wihzo:reflect_potion"
 SpeedPotionItemName = "wihzo:speed_up"
 DizzyHammerItemName = "wihzo:dizzy_hammer"
+BrushItemName = "wihzo:gomoku_brush"
 
 # ---------------------- 道具表 ----------------------
 # 所有道具的统一定义，后续开发新道具只加这里，系统按 type 分派行为：
 #   name:       短显示名（播报用；物品JSON里的display_name是带说明的详细版）
 #   type:       'piece' 棋子 / 'pickaxe' 采集镐 / 'weapon' 武器 / 'ink' 转化墨水 / 'bomb' 爆炸雷管 /
-#               'boardpick' 破盘镐 / 'swap' 换位符 / 'board' 便携棋盘 / 'transfer' 转移符 /
-#               'speed' 加速药水
+#               'boardpick' 破盘镐 / 'swap' 换位符 / 'board' 便携棋盘 / 'reflect' 反伤药水 /
+#               'speed' 加速药水 / 'brush' 笔刷
 #   consumable: 使用一次即销毁（耐久1）
 #   piece 专用:  fromOre 产出该棋子的矿 / wildcard 万能挡子（金棋子，落子不分颜色、只挡线不获胜）/
 #               square 方阵棋子（2x2铺子：点击格为左上角，越界/已占格忽略，见HandleSquarePlace）/
@@ -180,11 +218,14 @@ DizzyHammerItemName = "wihzo:dizzy_hammer"
 #   bomb 专用:   无额外字段（爆炸范围见BombBlastRange，右键棋盘引爆）
 #   boardpick专用: 无额外字段（右键拆棋盘基座一格，见HandleBoardPickUse；只拆基座，别的都不响应）
 #   swap 专用:   无额外字段（右键与最近的敌方玩家互换位置，见HandleSwapUse）
+#   brush 专用:  无额外字段（走到比分文字板附近右键，给自己的系列赛胜场+1，
+#               见HandleBrushUse；只能从问号方块开出，见RandomBlockPoolDict）
 #   board 专用:  maxUses 可铺的1x1扩展格数（★须与beh JSON的minecraft:max_damage一致——
 #               耐久是引擎物品数据，扣减/归零销毁见DamageBoardItem；扩展格与主盘
 #               共用引擎网格，上面的子与主盘的子互相连线）
-#   transfer专用: 无额外字段（右键激活护盾：下次受到的真实伤害不落在自己身上，
-#               全额转给最近的敌方玩家，见HandleTransferUse/OnDamage）
+#   reflect专用: 无额外字段（右键激活护盾：下次受到来自其他玩家的真实伤害
+#               （攻击或玩家道具）时，全额反弹给伤害来源；坠落等自然伤害/
+#               中立来源不触发、护盾保留，见HandleReflectPotionUse/OnDamage）
 ItemTable = {
 	PieceItemNormal: {
 		"name": "普通棋子", "type": "piece",
@@ -229,8 +270,8 @@ ItemTable = {
 	SwapItemName: {
 		"name": "换位符", "type": "swap", "consumable": True,
 	},
-	AntiDamageItemName: {
-		"name": "转移符", "type": "transfer", "consumable": True,
+	ReflectPotionItemName: {
+		"name": "反伤药水", "type": "reflect", "consumable": True,
 	},
 	SpeedPotionItemName: {
 		"name": "加速药水", "type": "speed", "consumable": True,
@@ -241,6 +282,9 @@ ItemTable = {
 		# （见OnPlayerAttack的dizzy分支与HandleDizzyHammerHit）；
 		# 不写damage（缺省会套DefaultWeaponDamage一击必杀）
 		"dizzy": True,
+	},
+	BrushItemName: {
+		"name": "笔刷", "type": "brush", "consumable": True,
 	},
 	BoardItemName: {
 		"name": "便携棋盘", "type": "board",
@@ -275,6 +319,17 @@ SpeedPotionDuration = 10    # 持续秒数
 # HandleDizzyHammerHit）。效果时长按整秒生效（引擎AddEffectToEntity只收整秒）
 DizzyHammerStunSeconds = 1.5
 
+# 笔刷：走到比分文字板（TextAnchor位置）附近右键，直接给自己的系列赛胜场
+# +BrushWinBonus（等于白捡一局胜利），用一次即碎。★唯一获取途径是问号方块
+# （见RandomBlockPoolDict的权重，极低概率）——刻意不进ItemTierDict的任何环形
+# 刷新池，地上永远不会自然刷出笔刷。
+# 可用距离（格）：玩家与ScoreBoardAnchor的三维直线距离须在此以内，否则右键
+# 无效且不消耗道具（"必须走到记分牌前"才是这件道具的成本所在）。
+# ★ScoreBoardAnchor为None（比分文字板关闭）时笔刷直接失效
+BrushUseRadius = 6
+# 每次涂抹加多少胜场（1=白捡一局；改大就是白捡多局）
+BrushWinBonus = 1
+
 # 派生表（由道具表自动生成，勿手改）
 # 镐 -> 可采集的矿
 PickaxeOreDict = {item: cfg["mineOre"] for item, cfg in ItemTable.iteritems() if cfg["type"] == "pickaxe"}
@@ -305,20 +360,20 @@ DeathRespawnHoldSeconds = 5
 # 无床玩家默认在世界出生点重生，本图出生点在远处未加载区块，重生会永远卡在
 # "正在重生"——故进服/开局时把每个玩家的复活点设到棋盘外沿（tickingarea常驻
 # 加载范围内）。重生落地后LimitedRespawn再传送到队伍复活点，此点只保证重生能完成。
-# ★z方向偏移须超出棋盘半边长（BoardSize/2），免得重生点落在棋盘上
+# ★z方向偏移须超出棋盘半边长（实际边长/2），免得重生点落在棋盘上——乱斗模式
+# 棋盘随人数扩容，偏移不够时运行时自动外推（见GetEngineRespawnPos），不必手改
 RespawnPosOffset = (0, 2, 7)
 
-# ---------------------- 队伍阵营映射 ----------------------
-# 队伍名 -> 阵营（★须与Team组件编辑器里配置的队伍名一致，改队伍名=这里同步改）
-TeamSideDict = {
-	"森林之子": "white",
-	"火焰使者": "black",
-}
-# 阵营 -> 播报显示名
-SideNameDict = {"white": "白方", "black": "黑方", "gold": "金棋子"}
+# ---------------------- 队伍（乱斗模式下仅作基础设施） ----------------------
+# 乱斗（PvPvP）不做队伍对抗：TeamMod的2队只保留出生点/传送/计分板等基础设施，
+# 棋子归属由GomokuMod自己的逻辑棋子值区分（开局每人分配1~FFAMaxPlayers，
+# 见gomokuServerSystem的AssignPieceValues），与队伍无关。
+# 队友间伤害已在script_Team的teamConfig打开（canHurtTeammate=True），
+# 乱斗下所有人互相均可造成伤害
 
-# 单人调试开关：True时单人落子黑白交替（无视队伍），用于单人验证双方颜色与胜负逻辑；
-# 正式对战必须为False（按落子方队伍定色）。金棋子不受影响（本就不分队）
+# 单人调试开关：True时单人落子在两个逻辑棋子值间交替（无视分配表），用于单人
+# 验证多方胜负逻辑；正式对战必须为False（按落子玩家的棋子值落子）。
+# 金棋子不受影响（本就不分归属）
 DebugSoloAlternateSides = False
 
 # 调试聊天命令开关：True时聊天输入 #give <道具名> 可直接领取道具（#give 列出可领道具，
@@ -406,7 +461,7 @@ ItemTierDict = {
 	},
 	"high": {
 		"name": "高级道具",
-		"items": [ExecutionSwordName, SwapItemName, AntiDamageItemName, DizzyHammerItemName],
+		"items": [ExecutionSwordName, SwapItemName, ReflectPotionItemName, DizzyHammerItemName],
 		"radius": (25, 35), "interval": 10,
 	},
 }
@@ -425,14 +480,19 @@ TierMaxCountDict = {
 # 资源包terrain_texture.json/blocks.json的注册一致
 RandomBlockName = "wihzo:gomoku_block_random"
 # 随机奖励池（道具名 -> 权重）：不含棋子——避开棋子携带上限（MaxCarriedPieces）
-# 满时抽到棋子无处安放的边界；权重越大越常出，等权就全写一样的数
+# 满时抽到棋子无处安放的边界；权重越大越常出，等权就全写一样的数。
+# 权重是相对值（抽取时按合计归一化，见DrawRandomBlockReward），故常规道具统一
+# 放大到十位数，好让笔刷这种"极低概率"的东西能用权重1表达出约1%的档位
 RandomBlockPoolDict = {
-	PickaxeStoneName: 3,
-	PickaxeIronName: 2,
-	InkItemName: 2,
-	DetonatorItemName: 2,
-	BoardItemName: 1,
-	ExecutionSwordName: 1,
+	PickaxeStoneName: 30,
+	PickaxeIronName: 20,
+	InkItemName: 20,
+	DetonatorItemName: 20,
+	BoardItemName: 10,
+	ExecutionSwordName: 10,
+	# 笔刷：唯一获取途径，极低概率（1/111 ≈ 0.9%）。白送一局胜场，故刻意做成
+	# "开一百个问号方块才见一次"的彩票；调高这个数就是调高出率
+	BrushItemName: 1,
 }
 # 刷新参数（独立于SpawnConfigList/ItemTierDict，自成一条刷新协程）：
 # radius 刷新环(内,外半径，格) / interval 刷新间隔(秒) /
@@ -448,11 +508,57 @@ RandomBlockSpawnConfig = {
 # 连珠数（几子连珠获胜）
 WinRowLength = 5
 
-# ---------------------- 比分记分牌（告示牌） ----------------------
-# 比分告示牌的世界坐标列表：编辑器里摆好告示牌后把坐标填进来（空列表=功能关闭）。
-# 与BoardCenter同理：运行时读不到预设坐标，只能走config常量；牌须是原版告示牌方块
-# （standing_sign/wall_sign均可），坐标=告示牌方块本身所在的格子。
-# 所有牌显示同一内容：黑方/白方跨局累计胜场。计分就存在牌面文本里（随世界存档持久，
-# 重进服务器不清零）；第一块牌被拆掉或文本被改坏（解析不出数字）则从0:0重新计。
-# 临时改分=直接改牌面文字，保持"黑方 N 胜"格式即可被读回
-ScoreSignPosList = []
+# ---------------------- 玩家颜色表 ----------------------
+# 键 = 本局逻辑棋子值（1~FFAMaxPlayers，开局按人头分配，见AssignPieceValues）——
+# 也就是"这一局你是几号玩家"。每人一色：
+#   name  色名（比分行/播报里带一个中文色名，小字看不清颜色时也认得出人）
+#   code  聊天框§颜色码（聊天播报用；文字板不吃§码，颜色走rgba）
+#   rgba  文字板颜色（RGBA 0~1，引擎TextBoard只收这个格式）
+# ★条数须 >= FFAMaxPlayers，否则超出的玩家退回PlayerColorFallback（白）。
+# 这张表同时是以后做"棋石按玩家上色"的现成底表（届时再加贴图/方块名字段）
+PlayerColorDict = {
+	1: {"name": "红", "code": "§c", "rgba": (1.00, 0.33, 0.33, 1.0)},
+	2: {"name": "蓝", "code": "§9", "rgba": (0.33, 0.55, 1.00, 1.0)},
+	3: {"name": "黄", "code": "§e", "rgba": (1.00, 0.93, 0.35, 1.0)},
+	4: {"name": "绿", "code": "§a", "rgba": (0.40, 0.90, 0.40, 1.0)},
+	5: {"name": "紫", "code": "§d", "rgba": (0.85, 0.45, 0.95, 1.0)},
+	6: {"name": "橙", "code": "§6", "rgba": (1.00, 0.65, 0.20, 1.0)},
+	7: {"name": "青", "code": "§b", "rgba": (0.45, 0.90, 0.90, 1.0)},
+}
+# 没有本局棋子值时（等待阶段/满员旁观）的兜底颜色
+PlayerColorFallback = {"name": "白", "code": "§f", "rgba": (1.0, 1.0, 1.0, 1.0)}
+
+# ---------------------- 比分文字板（TextAnchor预设位置） ----------------------
+# 比分 = 系列赛胜场：每局连成五子的玩家 +1，跨局累计（不是本局落子数，
+# 新一局开始不清零，见gomokuServerSystem的playerWinCountDict）。
+# 一行一名玩家，文字用该玩家自己的颜色（PlayerColorDict按棋子值取色）。
+#
+# 位置 = 编辑器里"TextAnchor"预设的坐标。与BoardCenter同理：不能在运行时读
+# db/presets.json——加载世界后引擎会把virtual预设消耗掉并清空该文件，脚本读到的
+# 永远是空列表（已实测）。编辑器里移动TextAnchor后把新坐标同步到这里。
+# None = 关闭比分文字板
+ScoreBoardAnchor = (1868, 65, 589)
+# 整列文字板抬高多少格：锚点方块是贴着地面放的（编辑器里点地表放预设），
+# 标题直接用锚点高度会把半截字埋进土里，玩家行再往下排就全在地下。
+# 抬高后标题=锚点Y+本值，玩家行自标题向下排（人多的局最后一两行可能又
+# 接近地面，是已知取舍）。EndLogic的系列赛记分牌立在本列最上方（标题Y
+# 再+1.2），改这里记得同步它那边的scoreboardPos
+ScoreBoardLiftY = 3.0
+# 标题行（永远在最上面，白字）
+ScoreBoardTitle = "=== 比分 ==="
+ScoreBoardTitleColor = (1.0, 1.0, 1.0, 1.0)
+# 文字缩放 (x, y)：引擎SetBoardScale只收两个分量（编辑器TextBoard预设用的是3.0）
+ScoreBoardScale = (3.0, 3.0)
+# 相邻两行的Y间距（格）：标题在锚点高度+抬高量，第N名玩家往下降 N * 本值。
+# ★缩放调大后字更高，行距要跟着加，否则上下行会叠在一起（只能进游戏肉眼调）
+ScoreBoardLineHeight = 0.6
+# 是否始终面向镜头：True = 从任何方向走过来都读得到字。锚点在森林里、
+# 玩家开局就在安全圈四边，固定朝向很容易正好走到板背面看到空白
+# （EndLogic的系列赛记分牌同款配置，一起改）
+ScoreBoardFaceCamera = True
+# 底板颜色（RGBA 0~1）；alpha=0 即透明无底板（同编辑器TextBoard预设）
+ScoreBoardBackColor = (0.0, 0.0, 0.0, 0.0)
+# 客户端就绪(UiInitFinished)后延迟多少帧建板（30帧=1秒，避初始化竞态）
+ScoreBoardCreateDelayFrames = 30
+# 场上没有玩家时（服务端还没推过数据/空服）显示的占位行
+ScoreBoardWaitingText = "等待对局开始"

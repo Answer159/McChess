@@ -2,14 +2,14 @@
     "format_version": "1.10",
     "minecraft:item": {
         "description": {
-            "identifier": "wihzo:anti_damage",
+            "identifier": "wihzo:gomoku_brush",
             "register_to_create_menu": true,
             "category": "Equipment"
         },
         "components": {
             "minecraft:max_stack_size": 1,
             "netease:customtips": {
-                "value": "右键激活（对空气也可以）：下次受到的伤害不落在自己身上，全额转给最近的敌方玩家。触发后或新一局开始时失效；用一次即碎"
+                "value": "走到比分记分牌附近右键（对空气也可以）：直接在记分牌上给自己涂加1场胜场。离记分牌太远无效且不消耗；用一次即碎。只能从问号方块里开出，极低概率"
             }
         }
     }

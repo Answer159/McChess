@@ -12,7 +12,7 @@
         "dimension": 0, 
         "entityId": null, 
         "isPreLoad": false, 
-        "loadPresetCfg": true, 
+        "loadPresetCfg": false, 
         "maxChunkPos": [
             116, 
             34
@@ -48,41 +48,36 @@
     {
         "bornType": 0, 
         "changes": {
-            "textboardAttrs.SetBackColor.alpha": 0.0, 
-            "textboardAttrs.SetFaceCamera": false, 
-            "textboardAttrs.SetText": "\n\n", 
+            "name": "TextAnchor", 
             "transform.pos": [
-                1853.3800048828125, 
-                63.91001892089844, 
-                549.9498901367188
-            ], 
-            "transform.scale[0]": 2.0, 
-            "transform.scale[1]": 2.0, 
-            "transform.scale[2]": 2.0
+                1868.0, 
+                65.0, 
+                589.0
+            ]
         }, 
         "classType": "PresetInstance", 
         "dimension": 0, 
         "entityId": null, 
         "isPreLoad": false, 
-        "loadPresetCfg": true, 
+        "loadPresetCfg": false, 
         "maxChunkPos": [
-            115, 
-            34
+            116, 
+            36
         ], 
         "minChunkPos": [
-            115, 
-            34
+            116, 
+            36
         ], 
-        "name": "TextboardPreset", 
-        "objId": "41e372d708a643918a3b02796a3f01bf", 
-        "presetId": "TextboardPreset", 
-        "presetType": "TextboardPreset", 
+        "name": "TextAnchor", 
+        "objId": "0de8401d519041d7ae5f92aa8835c5ee", 
+        "presetId": "2fc2d78f-fc6f-40c3-b99f-f40668b45292", 
+        "presetType": "BlockPreset", 
         "transform": {
             "classType": "Transform", 
             "pos": [
-                1853.3800048828125, 
-                63.91001892089844, 
-                549.9498901367188
+                1868.0, 
+                65.0, 
+                589.0
             ], 
             "rotation": [
                 0, 
@@ -90,9 +85,9 @@
                 0
             ], 
             "scale": [
-                2.0, 
-                2.0, 
-                2.0
+                1, 
+                1, 
+                1
             ]
         }, 
         "virtual": true

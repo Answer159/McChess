@@ -1,0 +1,12 @@
+{
+    "format_version": "1.10",
+    "minecraft:item": {
+        "description": {
+            "identifier": "wihzo:gomoku_brush",
+            "category": "Equipment"
+        },
+        "components": {
+            "minecraft:icon": "gomoku_brush"
+        }
+    }
+}

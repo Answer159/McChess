@@ -103,8 +103,17 @@ UpdateSeriesScoreEvent = "UpdateSeriesScoreEvent"
 SeriesScoreTitleFormat = "先取{0}胜"
 # 记分牌初始文案（服务端首次广播前显示）
 SeriesBoardInitText = "等待系列赛开始"
-# 记分牌世界坐标（参照编辑器里原TextBoard预设的摆放位置）与缩放
-scoreboardPos = (1853.38, 63.91, 549.95)
+# 记分牌世界坐标与缩放。
+# 位置=编辑器TextAnchor预设处（db/presets.json实测(1868,65,589)）：GomokuMod的
+# 比分文字板也立在这个锚点列上（标题行在锚点Y+ScoreBoardLiftY=68.0、玩家行
+# 向下递减），本牌摆在其标题行正上方当系列赛表头——Y=标题Y+1.2（约两行
+# Gomoku行距0.6）留出空行，x/z取锚点方块中心+0.5与Gomoku标题对齐。锚点贴
+# 地所以整列都抬高了，别只改本牌不改Gomoku那边（一起同步）。编辑器里挪
+# TextAnchor后此处要与script_Gomoku/config.py的ScoreBoardAnchor一起改。
+scoreboardPos = (1868.5, 69.2, 589.5)
 scoreboardScale = (2.0, 2.0)
 # 记分牌文字颜色（RGBA 0-1）
 SeriesBoardTextColor = (1.0, 1.0, 1.0, 1.0)
+# 是否始终面向镜头：True = 玩家从任何方向走过来都读得到字（Gomoku文字板
+# 同款配置）。固定朝向从背面看是空白板，森林里绕到背面的概率不低
+SeriesBoardFaceCamera = True

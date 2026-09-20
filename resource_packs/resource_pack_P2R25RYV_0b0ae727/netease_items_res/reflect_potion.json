@@ -2,11 +2,11 @@
     "format_version": "1.10",
     "minecraft:item": {
         "description": {
-            "identifier": "wihzo:anti_damage",
+            "identifier": "wihzo:reflect_potion",
             "category": "Equipment"
         },
         "components": {
-            "minecraft:icon": "anti_damage"
+            "minecraft:icon": "reflect_potion"
         }
     }
 }

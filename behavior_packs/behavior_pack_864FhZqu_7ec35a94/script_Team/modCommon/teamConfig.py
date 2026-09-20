@@ -67,6 +67,12 @@ for v in editorConfig.childDataDict['TeamCommon'].values():
 	allocationMethod = v['allocationMethod']
 	canHurtTeammate = v['canHurtTeammate']
 
+# PvPvP乱斗覆盖：五子棋玩法是自由混战，队友之间也必须能造成伤害（编辑器里
+# 组件配置的是False，这里在config层强制打开——同款写法见script_StartLogic的
+# gameMinPlayerNum处理）。若以后在MCStudio组件编辑器里勾上"可伤害队友"，
+# 这行覆盖可以删掉
+canHurtTeammate = True
+
 # 队伍名称映射（限于UI显示，最多5队）
 queueNameDict = []  # teamName
 # 队伍文字颜色设置

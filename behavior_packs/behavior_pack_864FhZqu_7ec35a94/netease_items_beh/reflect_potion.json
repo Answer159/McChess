@@ -1,0 +1,16 @@
+{
+    "format_version": "1.10",
+    "minecraft:item": {
+        "description": {
+            "identifier": "wihzo:reflect_potion",
+            "register_to_create_menu": true,
+            "category": "Equipment"
+        },
+        "components": {
+            "minecraft:max_stack_size": 1,
+            "netease:customtips": {
+                "value": "右键激活（对空气也可以）：下次受到来自玩家的伤害（攻击或玩家道具）时，伤害不落在自己身上，全额反弹给伤害来源。坠落等自然伤害不触发反弹，护盾保留；触发后或新一局开始时失效；用一次即碎"
+            }
+        }
+    }
+}

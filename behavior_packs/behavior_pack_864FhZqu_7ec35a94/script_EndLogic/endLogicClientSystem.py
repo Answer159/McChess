@@ -47,7 +47,7 @@ class EndLogicClientSystem(ClientSystem):
 
 	# ---------- 系列赛记分牌（官方TextBoard客户端组件，文字随服务端广播更新） ----------
 
-	# 创建场地记分牌：透明底、白字、不跟随镜头（像立在场地里的大屏）
+	# 创建场地记分牌：透明底、白字、始终面向镜头（森林里从任何方向都读得到）
 	def DelayCreateSeriesBoard(self):
 		yield -30
 		comp = clientApi.GetEngineCompFactory().CreateTextBoard(clientApi.GetLevelId())
@@ -55,7 +55,8 @@ class EndLogicClientSystem(ClientSystem):
 			comp.RemoveTextBoard(self.seriesBoardId)
 			self.seriesBoardId = None
 		boardId = comp.CreateTextBoardInWorld(
-			self.seriesScoreText, tuple(config.SeriesBoardTextColor), (0, 0, 0, 0), False)
+			self.seriesScoreText, tuple(config.SeriesBoardTextColor), (0, 0, 0, 0),
+			config.SeriesBoardFaceCamera)
 		if boardId:
 			self.seriesBoardId = boardId
 			comp.SetBoardScale(boardId, tuple(config.scoreboardScale))

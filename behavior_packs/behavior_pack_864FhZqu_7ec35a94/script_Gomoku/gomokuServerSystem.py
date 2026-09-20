@@ -7,17 +7,20 @@ import mod.server.extraServerApi as serverApi
 import config
 from mod_log import logger
 from coroutineMgrGas import CoroutineMgr
+from gameModes.modeFactory import CreateGameMode
 from modCommon.gomokuCore.board import (
 	GomokuBoard, PlaceResult,
-	EMPTY, BLACK, WHITE,
+	EMPTY,
 	STATE_PLAYING, STATE_WON, STATE_DRAW,
 )
 
 ServerSystem = serverApi.GetServerSystemCls()
 
-# 金棋子（万能挡子）在引擎中的棋子值：引擎只认BLACK/WHITE参与胜负，
-# 第三方值占用格子且不与黑白匹配，天然阻断连线（见PlaceInEngine）。
-GOMOKU_GOLD = 3
+# 金棋子（万能挡子）在引擎中的棋子值：乱斗模式下1~config.FFAMaxPlayers
+# （默认7）是玩家的逻辑棋子值（见AssignPieceValues），金棋子取区间外的值——
+# 引擎按棋子值判五连，第三方值占格且不与任何玩家匹配，天然阻断所有人连线
+# （见PlaceInEngine）。
+GOMOKU_GOLD = 8
 
 
 class GomokuServerSystem(ServerSystem):
@@ -33,7 +36,8 @@ class GomokuServerSystem(ServerSystem):
 	+ extensionCells扩展格。
 
 	核心交互：
-	1. 手持棋子物品右键棋盘基座 -> 落子（颜色=落子方队伍，消耗棋子）
+	1. 手持棋子物品右键棋盘基座 -> 落子（归属=落子玩家的本局棋子值，消耗棋子；
+	   乱斗PvPvP：每人自成一方，棋盘随人数扩容，先连五子者获胜）
 	2. 左键挖棋子矿 -> 采集（需对应镐，走ServerPlayerTryDestroyBlockEvent；镐耐久1采一次即碎；金矿徒手可挖）
 	3. 手持处决剑攻击玩家 -> 一击必杀（剑用一次即碎）
 	4. 背包规则：新一局开始清空全体背包；棋子携带上限MaxCarriedPieces个（道具不限），
@@ -43,7 +47,7 @@ class GomokuServerSystem(ServerSystem):
 	   重生后行动封锁DeathRespawnHoldSeconds秒（每秒聊天框倒计时，期间免疫伤害/
 	   拦截一切交互），时间到自动恢复——见"阵亡与复活"一节
 	6. 手持便携棋盘右键棋盘平面或低一层的地面 -> 铺一格1x1棋盘格（与主盘同平面、
-	   CellPlaceMaxRadius范围内、不与主盘/已有扩展格重叠，需加入队伍）；
+	   CellPlaceMaxRadius范围内、不与主盘/已有扩展格重叠，需已分配本局棋子值）；
 	   每铺一格耐久-1，用完销毁——见HandleCellPlace。扩展格与主盘共用引擎网格，
 	   任意格子上连成五子都获胜，全部格子下满才平局
 
@@ -55,6 +59,17 @@ class GomokuServerSystem(ServerSystem):
 	def __init__(self, namespace, systemName):
 		ServerSystem.__init__(self, namespace, systemName)
 		self.levelId = serverApi.GetLevelId()
+		# 本局实际盘边长（格数）：2人局=config.BoardSize基础边长，每多1名玩家
+		# +config.BoardSizePerExtraPlayer（见ComputeRoundBoardSize）。
+		# 等待阶段按基础边长铺盘，开局（OnRoundStart）按在线人数重算并扩缩
+		self.boardSize = config.BoardSize
+		# 乱斗（PvPvP）棋子归属：playerId -> 本局逻辑棋子值（1~FFAMaxPlayers，
+		# 引擎按棋子值判五连，同值才算同方的连线）。开局AssignPieceValues分配，
+		# 对局中途进场的玩家由OnPlayerAdd补发空闲值；assignedPieceValues记录
+		# 本局已用过的值——玩家中途退出其值作废不回收（防止后来的玩家"继承"
+		# 离场者盘上的棋子/连线），下一局开始时整体重置
+		self.playerPieceValueDict = {}
+		self.assignedPieceValues = set()
 		# 引擎网格：主盘9x9 + 便携棋盘扩展格共用一张大网格（EngineGridSize×EngineGridSize，
 		# 以主盘中心为正中心；乱斗模式不强制轮流落子，黑白双方均可随时落子）。
 		# 引擎只管落子/五连，"哪些格子可落子"由本层管：主盘81格 + extensionCells扩展格
@@ -87,17 +102,20 @@ class GomokuServerSystem(ServerSystem):
 		# （指方块右键走ServerItemUseOnEvent、对空气右键走ServerItemTryUseEvent），
 		# 同一次点击两个事件可能都到——1秒内只生效一次
 		self.swapTriggerTime = {}
-		# 转移符护盾登记：{playerId}。激活后下一次受到的真实伤害不落在自己身上，
-		# 全额转给最近的敌方玩家（见OnDamage）；触发即失效，新一局开始清空；
-		# 与换位符同款双入口（UseOn/TryUse），transferUseTime去重
-		self.transferShieldSet = set()
-		self.transferUseTime = {}
+		# 反伤药水护盾登记：{playerId}。激活后下一次受到来自其他玩家的真实伤害
+		# （攻击或玩家道具）不落在自己身上，全额反弹给伤害来源（见OnDamage）；
+		# 坠落等自然伤害不触发、护盾保留；触发即失效，新一局开始清空；
+		# 与换位符同款双入口（UseOn/TryUse），reflectUseTime去重
+		self.reflectShieldSet = set()
+		self.reflectUseTime = {}
 		# 加速药水登记：speedPotionUseTime右键去重（UseOn/TryUse双入口）；
 		# speedPotionBaseDict记录提速前的基础速度（到期恢复/续喝不叠加的基准），
 		# speedPotionCoroutineDict持有到期协程（新一瓶顶掉旧的=只重置计时）
 		self.speedPotionUseTime = {}
 		self.speedPotionBaseDict = {}
 		self.speedPotionCoroutineDict = {}
+		# 笔刷去重：playerId -> 上次触发时刻（同款UseOn/TryUse双入口，见HandleBrushUse）
+		self.brushUseTime = {}
 		# 眩晕锤的眩晕登记：playerId -> 眩晕解禁时刻（time.time()秒）。眩晕期间
 		# 拦截拾取（见OnPlayerTryTouch）——道具被锤落在脚下，不拦着会原地秒捡回去；
 		# 移速锁死等表现由原版效果承担（见HandleDizzyHammerHit），不在这里做
@@ -108,10 +126,21 @@ class GomokuServerSystem(ServerSystem):
 		self.respawnHoldUntilDict = {}
 		# 在线玩家集合（OnPlayerAdd/OnDelServerPlayer维护；开局重设全体复活点用）
 		self.playerIds = set()
+		# 系列赛胜场：{playerId: 胜场数}。每局连成五子的玩家+1，跨局累计
+		# （★OnRoundStart不清空——这就是"跨局"的全部实现），驱动TextAnchor位置的
+		# 比分文字板（见BuildScoreBoardData/BroadcastScoreBoard）。
+		# 键是运行时playerId，退服后不删（退服玩家不在playerIds里，比分行自然不显示）；
+		# 重连会换新playerId，等于重新从0记——与棋子值不回收是同一套取舍
+		self.playerWinCountDict = {}
 		self.loggedBlockUseEvent = False
 		self.loggedItemUseOnEvent = False
 		self.loggedCarriedItem = False
 		self.loggedTryDestroyEvent = False
+		# 当前玩法模式（工厂产出，见gameModes/modeFactory）：宿主只认GameModeBase的
+		# 钩子，不认识任何具体模式；换模式=改config.GameMode一个字符串，模式之间
+		# 互不引用。工厂拿不到/造不出配置里那个模式时会退回经典模式并记日志
+		self.gameMode = CreateGameMode(self)
+		self.gameMode.OnEnter()
 		self.ListenEvent()
 
 	def ListenEvent(self):
@@ -139,11 +168,16 @@ class GomokuServerSystem(ServerSystem):
 			config.DamageEvent, self, self.OnDamage)
 		self.ListenForEvent(serverApi.GetEngineNamespace(), serverApi.GetEngineSystemName(),
 			config.ServerChatEvent, self, self.OnServerChat)
+		self.ListenForEvent(serverApi.GetEngineNamespace(), serverApi.GetEngineSystemName(),
+			config.ServerEntityTryPlaceBlockEvent, self, self.OnEntityTryPlaceBlock)
 		self.ListenForEvent(config.StartLogicModName, config.StartLogicServerSystemName,
 			config.StartLogicEvent, self, self.OnRoundStart)
+		self.ListenForEvent(config.ModName, config.ClientSystemName,
+			config.GomokuScoreRequestEvent, self, self.OnScoreBoardRequest)
 
 	def UnListenEvent(self):
 		self.UnDefineEvent(config.GomokuGameResultEvent)
+		self.UnDefineEvent(config.GomokuScoreBoardEvent)
 		self.UnListenForEvent(serverApi.GetEngineNamespace(), serverApi.GetEngineSystemName(),
 			config.ScriptTickServerEvent, self, self.OnTickServer)
 		self.UnListenForEvent(serverApi.GetEngineNamespace(), serverApi.GetEngineSystemName(),
@@ -168,11 +202,30 @@ class GomokuServerSystem(ServerSystem):
 			config.DamageEvent, self, self.OnDamage)
 		self.UnListenForEvent(serverApi.GetEngineNamespace(), serverApi.GetEngineSystemName(),
 			config.ServerChatEvent, self, self.OnServerChat)
+		self.UnListenForEvent(serverApi.GetEngineNamespace(), serverApi.GetEngineSystemName(),
+			config.ServerEntityTryPlaceBlockEvent, self, self.OnEntityTryPlaceBlock)
 		self.UnListenForEvent(config.StartLogicModName, config.StartLogicServerSystemName,
 			config.StartLogicEvent, self, self.OnRoundStart)
+		self.UnListenForEvent(config.ModName, config.ClientSystemName,
+			config.GomokuScoreRequestEvent, self, self.OnScoreBoardRequest)
 
 	def OnTickServer(self):
 		CoroutineMgr.Tick()
+		# 玩法模式的每帧钩子（经典模式是空实现；陷阱模式在这里查玩家脚下踩没踩空）
+		self.gameMode.OnTick()
+
+	def OnEntityTryPlaceBlock(self, args):
+		"""实体（含玩家）尝试放置方块 -> 交当前玩法模式表决，不允许就置cancel取消。
+		经典模式一律放行；陷阱模式禁止在陷阱格所在的整列上放任何方块（不然搭一条
+		桥就能平推过雷区，见TrapMode.CanPlaceBlock）"""
+		if args.get('cancel'):
+			return  # 已被别处取消，不重复判定
+		try:
+			if not self.gameMode.CanPlaceBlock(args.get('entityId'),
+					args.get('x'), args.get('y'), args.get('z')):
+				args['cancel'] = True
+		except Exception as e:
+			logger.warning("[Gomoku] OnEntityTryPlaceBlock 异常: {}".format(e))
 
 	# ---------- 生命周期 ----------
 
@@ -181,12 +234,21 @@ class GomokuServerSystem(ServerSystem):
 		if playerId == "-1":
 			return
 		self.playerIds.add(playerId)
+		# 玩法模式的进场钩子（陷阱模式用它给新玩家登记初始安全落点）
+		self.gameMode.OnPlayerAdd(playerId)
 		# 无床玩家默认按世界出生点重生，本图出生点在远处未加载区块，重生会卡死
 		# 在"正在重生"——进服就把复活点改设到棋盘外沿（见SetEngineRespawnPoint）
 		self.SetEngineRespawnPoint(playerId)
+		# 乱斗局进行中进场：补发一个空闲棋子值（没空闲=本局满员，只能旁观）。
+		# 等待阶段（还没分配过）不在此处理，开局时AssignPieceValues统一分配
+		if self.playerPieceValueDict and playerId not in self.playerPieceValueDict:
+			self.TryAssignPieceValue(playerId)
 		if not self.boardBuilt:
 			# 等待阶段就尝试铺盘；组件/世界可能未就绪，延迟1秒（避初始化竞态）
 			CoroutineMgr.StartCoroutine(self.DelayBuildBoard())
+		# 比分文字板要加进新玩家这一行（也让新玩家看到别人的分）；他的客户端此刻
+		# 还没建好板，延迟广播一次兜底（客户端建好板后自己也会来要一次）
+		CoroutineMgr.StartCoroutine(self.DelayBroadcastScoreBoard())
 
 	def DelayBuildBoard(self):
 		yield -config.BoardBuildDelaySeconds * 30
@@ -194,26 +256,46 @@ class GomokuServerSystem(ServerSystem):
 			self.BuildBoard()
 
 	def OnRoundStart(self, args):
-		"""新一轮开始：确保棋盘已铺（等待期失败在此重试），清盘并启动资源刷新"""
+		"""新一轮开始：按在线人数重算盘边/分配乱斗棋子值，确保棋盘已铺（等待期
+		失败在此重试），清盘并启动资源刷新"""
 		logger.info("[Gomoku] 新一轮开始，重置棋盘")
+		# 乱斗：按本局在线人数扩缩棋盘（2人9、3人11…7人19），并给每人分配逻辑棋子值
+		playerCount = len(serverApi.GetPlayerList())
+		self.boardSize = self.ComputeRoundBoardSize(playerCount)
+		self.AssignPieceValues()
 		# 清空上一局玩家的背包（棋子/道具不留到下一局；keepInventory存档下尤其必要）
 		if config.ClearInventoryOnRoundStart:
 			self.RunCommand('/clear @a')
 			self.Announce("§e新对局开始，已清空背包")
+		self.Announce("§e本局§6{}人§e乱斗：棋盘§6{}x{}§e，每人自成一方，先连成五子者获胜！".format(
+			playerCount, self.boardSize, self.boardSize))
 		self.announceThrottleTime = {}
 		self.respawnHoldUntilDict = {}  # 上一局残留的阵亡冷却不带到下一局
-		self.transferShieldSet = set()  # 转移符护盾不跨局（道具都回收了，护盾跟着作废）
+		self.reflectShieldSet = set()  # 反伤药水护盾不跨局（道具都回收了，护盾跟着作废）
 		self.ClearAllSpeedBoosts()  # 加速药水效果同理不跨局：全体恢复原速
 		self.dizzyStunUntilDict = {}  # 眩晕锤的眩晕同理不跨局
-		# 开局重设一遍全体复活点（进服时设过；对局中入队的玩家兜底）
+		# 开局重设一遍全体复活点（进服时设过；棋盘边长变了偏移也要跟着变）
 		for playerId in self.playerIds:
 			self.SetEngineRespawnPoint(playerId)
 		if not self.boardBuilt:
 			self.BuildBoard()
 		if self.boardBuilt:
-			# 重铺基座层：先整层重铺修复上一局被破盘镐拆掉的格子（/fill默认replace，
-			# 对完好的基座无副作用；棋盘上方棋石的清理由ResetBoard负责），再按
-			# 新一局的随机形状重新挖缺——每局棋盘形状都不一样（见GenerateBoardCells）
+			# 人数变少棋盘缩小时，上一局的基座/棋石会残留在新区界之外——按乱斗
+			# 上限对应的最大见方清理（等待阶段按基础边长铺的盘同样在内）。
+			# 用replace过滤只清棋盘方块本体：同一环带里刷新的矿/道具/问号方块
+			# 不受影响（原地形在基座层下方，也不动）。
+			# 之后再重铺本局实际大小：基座整层重铺顺带修复上一局被破盘镐拆掉的
+			# 格子（/fill默认replace，对完好的基座无副作用；棋盘上方棋石的清理
+			# 由ResetBoard负责），最后按新一局的随机形状重新挖缺——每局棋盘形状
+			# 都不一样（见GenerateBoardCells）
+			cx, cy, cz = self.EnsureBoardCenter()
+			maxHalf = self.ComputeRoundBoardSize(config.FFAMaxPlayers) // 2
+			mx1, mz1, mx2, mz2 = cx - maxHalf, cz - maxHalf, cx + maxHalf, cz + maxHalf
+			self.RunCommand('/fill {} {} {} {} {} {} air 0 replace {}'.format(
+				mx1, cy, mz1, mx2, cy, mz2, config.ChessBaseBlockName))
+			for stoneName in config.StoneBlockNameSet:
+				self.RunCommand('/fill {} {} {} {} {} {} air 0 replace {}'.format(
+					mx1, cy + 1, mz1, mx2, cy + 1, mz2, stoneName))
 			x1, y1, z1, x2, y2, z2 = self.GetBoardBounds()
 			self.RunCommand('/fill {} {} {} {} {} {} {}'.format(x1, y1, z1, x2, y2, z2, config.ChessBaseBlockName))
 			self.GenerateBoardCells()
@@ -221,8 +303,116 @@ class GomokuServerSystem(ServerSystem):
 			self.CarveBoardHoles()
 		# 回合开始时StartLogic会清掉全部掉落物（/kill @e[type=item]），自维护计数同步清零
 		self.itemExpireDict = {}
+		# 本局场地准备交给玩法模式（陷阱模式在这里整平地面、生成生成点与路径）。
+		# 必须排在StartSpawners之前：刷新取点要按模式算好的实心格来挑
+		self.gameMode.OnRoundStart()
 		if not self.spawnCoroutines:
 			self.StartSpawners()
+		# 本局棋子值刚重分配，比分行的颜色跟着换（胜场本身跨局累计不清零）
+		self.BroadcastScoreBoard()
+
+	# ---------- 乱斗：人数、盘边与棋子值 ----------
+
+	def ComputeRoundBoardSize(self, playerCount):
+		"""按本局人数算实际盘边长：2人=config.BoardSize基础边长，每多1人
+		+config.BoardSizePerExtraPlayer，封顶FFAMaxPlayers人对应的边长。
+		人数不足2按2算（单人试玩不缩到比基础更小，盘边不小于引擎MIN_SIZE）"""
+		effCount = max(2, min(playerCount, config.FFAMaxPlayers))
+		return config.BoardSize + (effCount - 2) * config.BoardSizePerExtraPlayer
+
+	def AssignPieceValues(self):
+		"""开局给在场玩家分配本局逻辑棋子值（1~FFAMaxPlayers）：引擎按棋子值判
+		五连，同值才算同一方的连线——这就是乱斗模式"逻辑上区分棋子"的全部实现
+		（视觉上棋石外观暂不区分）。按playerId排序分配保证稳定；超出上限的玩家
+		不分配（本局旁观，落子/墨水/铺格会被拦）。每局整体重置，不沿用上局"""
+		self.playerPieceValueDict = {}
+		self.assignedPieceValues = set()
+		value = 1
+		for playerId in sorted(serverApi.GetPlayerList()):
+			if value > config.FFAMaxPlayers:
+				logger.warning("[Gomoku] 乱斗满员：{} 本局无棋子值（旁观）".format(playerId))
+				self.SendMessageToPlayer(playerId, "§c本局玩家已满（{}人），你只能旁观，下一局自动加入".format(
+					config.FFAMaxPlayers))
+				continue
+			self.playerPieceValueDict[playerId] = value
+			self.assignedPieceValues.add(value)
+			value += 1
+		logger.info("[Gomoku] 乱斗棋子值已分配: {}人".format(len(self.playerPieceValueDict)))
+
+	def TryAssignPieceValue(self, playerId):
+		"""给对局中途进场的玩家补发一个空闲棋子值（本局没用过且没人在用的）。
+		离场玩家的值不回收复用（assignedPieceValues只增不减）——防止后来的玩家
+		"继承"离场者盘上的棋子与连线。没有空闲值=满员，通知旁观"""
+		for value in range(1, config.FFAMaxPlayers + 1):
+			if value not in self.assignedPieceValues:
+				self.playerPieceValueDict[playerId] = value
+				self.assignedPieceValues.add(value)
+				self.SendMessageToPlayer(playerId, "§e你已加入本局乱斗，可以落子了（棋盘上先连成五子者获胜）")
+				logger.info("[Gomoku] 中途进场补发棋子值: {} -> {}".format(playerId, value))
+				return
+		self.SendMessageToPlayer(playerId, "§c本局玩家已满（{}人），你只能旁观，下一局自动加入".format(
+			config.FFAMaxPlayers))
+
+	def GetPlayerPieceValue(self, playerId):
+		"""玩家的本局逻辑棋子值；未分配（等待阶段/满员旁观/离开后）返回None。
+		乱斗模式下这是"你是谁"的唯一事实来源，落子/墨水/铺格的资格判定都用它"""
+		return self.playerPieceValueDict.get(playerId)
+
+	def GetPieceOwnerName(self, pieceValue):
+		"""按棋子值反查持有玩家的显示名（播报用：墨水转化的victim归属等）；
+		持有者已离场（值未回收但人不在了）返回None，调用方按已离场玩家播报"""
+		for playerId, value in self.playerPieceValueDict.iteritems():
+			if value == pieceValue:
+				return self.GetPlayerName(playerId)
+		return None
+
+	# ---------- 比分文字板（系列赛胜场，立在TextAnchor预设位置） ----------
+	# 服务端只管数与排版，展示由客户端建TextBoard完成（文字板是纯客户端组件，
+	# 见gomokuClientSystem）。一行一名玩家、每行用该玩家自己的颜色——引擎里一块
+	# 板只有一个文字颜色，所以整行文字连颜色一起推给客户端，由它一行建一块板
+
+	def GetPlayerColor(self, playerId):
+		"""玩家的本局显示颜色（按逻辑棋子值查config.PlayerColorDict）。
+		没有棋子值（等待阶段/满员旁观/已离场）用兜底白色"""
+		value = self.playerPieceValueDict.get(playerId)
+		return config.PlayerColorDict.get(value) or config.PlayerColorFallback
+
+	def BuildScoreBoardData(self):
+		"""比分数据：data['rows'] = [[整行文字, RGBA], ...]，按本局棋子值排序
+		（没分到值的排在最后），只列在场玩家。分数=跨局累计的系列赛胜场。
+		文字里不写§颜色码（文字板是否支持§未验证），颜色走rgba由客户端SetBoardTextColor"""
+		rows = []
+		for playerId in sorted(self.playerIds,
+				key=lambda pid: (self.playerPieceValueDict.get(pid, config.FFAMaxPlayers + 1), pid)):
+			color = self.GetPlayerColor(playerId)
+			name = self.GetPlayerName(playerId) or "玩家"
+			wins = self.playerWinCountDict.get(playerId, 0)
+			if self.playerPieceValueDict.get(playerId):
+				text = "{}({})  {}".format(name, color["name"], wins)
+			else:
+				# 本局没有棋子值：不标色名（那个色名本局不属于他）
+				text = "{}  {}".format(name, wins)
+			rows.append([text, list(color["rgba"])])
+		data = self.CreateEventData()
+		data['rows'] = rows
+		return data
+
+	def BroadcastScoreBoard(self):
+		"""刷新所有客户端的比分文字板（开局/结算/进退场各调一次）"""
+		self.BroadcastToAllClient(config.GomokuScoreBoardEvent, self.BuildScoreBoardData())
+
+	def DelayBroadcastScoreBoard(self):
+		"""新玩家进场时的兜底补推：他的客户端此刻还没建好文字板，等1秒再广播一次
+		（客户端建好板后自己也会发GomokuScoreRequestEvent来要，两条路各兜一半）"""
+		yield -30
+		self.BroadcastScoreBoard()
+
+	def OnScoreBoardRequest(self, args):
+		"""客户端建好文字板后主动索要当前比分（晚进服/重连的人不用等下一局结算）"""
+		playerId = args.get('playerId')
+		if not playerId:
+			return
+		self.NotifyToClient(playerId, config.GomokuScoreBoardEvent, self.BuildScoreBoardData())
 
 	# ---------- 棋盘定位与铺设 ----------
 
@@ -234,9 +424,10 @@ class GomokuServerSystem(ServerSystem):
 		return self.boardCenter
 
 	def GetBoardBounds(self):
-		"""主盘基座层的 (x1, y, z1, x2, y, z2)"""
+		"""主盘基座层的 (x1, y, z1, x2, y, z2)。边长=self.boardSize（开局按人数
+		重算，见OnRoundStart/ComputeRoundBoardSize）"""
 		cx, cy, cz = self.EnsureBoardCenter()
-		half = config.BoardSize // 2
+		half = self.boardSize // 2
 		return (cx - half, cy, cz - half, cx + half, cy, cz + half)
 
 	def BuildBoard(self):
@@ -265,7 +456,7 @@ class GomokuServerSystem(ServerSystem):
 		  BoardEdgeRemoveChance * (ring/half) ** BoardRemoveFalloff。
 		结果存入boardCells（世界列坐标集合）；随机化关闭=满盘不缺格"""
 		cx, cy, cz = self.EnsureBoardCenter()
-		half = config.BoardSize // 2
+		half = self.boardSize // 2
 		if not config.RandomizeBoard:
 			self.boardCells = {(x, z)
 				for x in range(cx - half, cx + half + 1)
@@ -283,14 +474,14 @@ class GomokuServerSystem(ServerSystem):
 				if random.random() >= removeChance:
 					cells.add((x, z))
 		self.boardCells = cells
-		total = config.BoardSize * config.BoardSize
+		total = self.boardSize * self.boardSize
 		logger.info("[Gomoku] 本局棋盘形状已生成: {}/{}格 (缺{}格)".format(
 			len(cells), total, total - len(cells)))
 
 	def CarveBoardHoles(self):
 		"""按boardCells把缺格挖成空气：调用前须刚/fill铺满过整层基座（本方法只挖不铺，
 		不管上一局的残格）。逐行把连续缺格段合并成一条/fill air，减少命令数"""
-		total = config.BoardSize * config.BoardSize
+		total = self.boardSize * self.boardSize
 		if len(self.boardCells) == total:
 			return  # 满盘（随机化关闭/本局一格没缺），无需挖
 		x1, y1, z1, x2, y2, z2 = self.GetBoardBounds()
@@ -313,6 +504,11 @@ class GomokuServerSystem(ServerSystem):
 		self.RunCommand('/fill {} {} {} {} {} {} air 0 replace'.format(x1, y1 + 1, z1, x2, y1 + 1, z2))
 		if self.extensionCells:
 			for (x, z) in list(self.extensionCells):
+				if x1 <= x <= x2 and z1 <= z <= z2:
+					# 补进主盘缺格的格子不单独拆：它们在BoardSize见方内，上面的
+					# 整层/fill已重铺成基座、棋石清理已覆盖，新一局形状
+					# （GenerateBoardCells+CarveBoardHoles）接管这些格子
+					continue
 				self.RunCommand('/setblock {} {} {} air'.format(x, y1, z))
 				self.RunCommand('/setblock {} {} {} air'.format(x, y1 + 1, z))
 			logger.info("[Gomoku] 扩展格拆除: {}格".format(len(self.extensionCells)))
@@ -327,12 +523,6 @@ class GomokuServerSystem(ServerSystem):
 		return x1 <= pos[0] <= x2 and z1 <= pos[2] <= z2 and pos[1] == y1 \
 			and (pos[0], pos[2]) in self.boardCells
 
-	def IsInBoardArea(self, pos):
-		"""pos在主盘的BoardSize见方范围内（不论该格本局是否存在）：缺格仍是主盘领地，
-		便携棋盘不能往缺格里铺（见HandleCellPlace），与IsOnBoard区分"""
-		x1, y1, z1, x2, y2, z2 = self.GetBoardBounds()
-		return x1 <= pos[0] <= x2 and z1 <= pos[2] <= z2 and pos[1] == y1
-
 	def IsPlayableCell(self, pos):
 		"""pos是可落子的格子：主盘基座 或 便携棋盘铺的扩展格（基座层同一平面）"""
 		if self.IsOnBoard(pos):
@@ -345,7 +535,7 @@ class GomokuServerSystem(ServerSystem):
 		引擎网格99x99远大于实际可落子区，判断不能只看in_bounds
 		（方阵棋子的2x2过滤用这里，否则会把棋子铺到没有基座的空网格上）"""
 		r = config.EngineGridSize // 2
-		h = config.BoardSize // 2
+		h = self.boardSize // 2
 		cx, cy, cz = self.EnsureBoardCenter()
 		if r - h <= gx <= r + h and r - h <= gy <= r + h:
 			return (gx + (cx - r), gy + (cz - r)) in self.boardCells
@@ -388,6 +578,12 @@ class GomokuServerSystem(ServerSystem):
 		return (cx - r + gx, cy + 1, cz - r + gy)
 
 	# ---------- 资源刷新 ----------
+
+	def ClampRingInner(self, inner):
+		"""资源环内半径钳到实际盘边之外：配置里的内半径按基础边长（9x9）写的，
+		乱斗棋盘随人数扩容后原内半径会压到盘上（刷在基座/棋石上）。
+		SpawnAtRing/SpawnTierItem/SpawnRandomBlock共用"""
+		return max(inner, self.boardSize // 2 + 1)
 
 	def StartSpawners(self):
 		for spawnConfig in config.SpawnConfigList:
@@ -435,12 +631,13 @@ class GomokuServerSystem(ServerSystem):
 			return  # 存量已满：不补，玩家采走后才会再刷
 		if random.random() > cfg.get('chance', config.DefaultSpawnChance):
 			return
-		cx, cy, cz = self.EnsureBoardCenter()
 		inner, outer = cfg['radius']
-		angle = math.radians(random.uniform(0, 360))
-		radius = random.uniform(inner, outer)
-		x = int(cx + radius * math.sin(angle))
-		z = int(cz + radius * math.cos(angle))
+		# 取点交给玩法模式：经典模式=老逻辑（环上随机），陷阱模式只在实心格里挑；
+		# 返回None表示这个模式此刻没有可用位置（本次刷新直接跳过）
+		column = self.gameMode.PickSpawnColumn(inner, outer)
+		if column is None:
+			return
+		x, z = column
 		surfaceY = self.FindSurfaceY(x, z)
 		if surfaceY is None:
 			return
@@ -469,12 +666,13 @@ class GomokuServerSystem(ServerSystem):
 		if random.random() > tierCfg.get('chance', config.DefaultSpawnChance):
 			return
 		itemName = random.choice(items)
-		cx, cy, cz = self.EnsureBoardCenter()
 		inner, outer = tierCfg['radius']
-		angle = math.radians(random.uniform(0, 360))
-		radius = random.uniform(inner, outer)
-		x = int(cx + radius * math.sin(angle))
-		z = int(cz + radius * math.cos(angle))
+		# 取点交给玩法模式：经典模式=老逻辑（环上随机），陷阱模式只在实心格里挑；
+		# 返回None表示这个模式此刻没有可用位置（本次刷新直接跳过）
+		column = self.gameMode.PickSpawnColumn(inner, outer)
+		if column is None:
+			return
+		x, z = column
 		surfaceY = self.FindSurfaceY(x, z)
 		if surfaceY is None:
 			return
@@ -515,13 +713,14 @@ class GomokuServerSystem(ServerSystem):
 		已有>=上限则跳过本次刷新，维持总量恒定），再按chance掷骰；
 		矿石贴该点地表放置（随地形），物品生成在地表上方靠自身重力落地。
 		两种类型每次刷新都打log（名称+坐标），便于在控制台核对生成情况"""
-		cx, cy, cz = self.boardCenter
 		inner, outer = spawnConfig['radius']
 		angleMin, angleMax = spawnConfig.get('angleRange', (0, 360))
-		angle = math.radians(random.uniform(angleMin, angleMax))
-		radius = random.uniform(inner, outer)
-		x = int(cx + radius * math.sin(angle))
-		z = int(cz + radius * math.cos(angle))
+		# 取点交给玩法模式：经典模式=老逻辑（环上随机），陷阱模式只在实心格里挑；
+		# 返回None表示这个模式此刻没有可用位置（本次刷新直接跳过）
+		column = self.gameMode.PickSpawnColumn(inner, outer, angleMin, angleMax)
+		if column is None:
+			return
+		x, z = column
 		surfaceY = self.FindSurfaceY(x, z)
 		if surfaceY is None:
 			return
@@ -726,15 +925,20 @@ class GomokuServerSystem(ServerSystem):
 			# 两条入口同一去处，去重见HandleSwapUse）
 			self.HandleSwapUse(playerId)
 			return
-		if itemType == 'transfer':
-			# 手持转移符右键 -> 激活伤害转移护盾（对空气右键走OnItemTryUse，
-			# 两条入口同一去处，去重见HandleTransferUse）
-			self.HandleTransferUse(playerId)
+		if itemType == 'reflect':
+			# 手持反伤药水右键 -> 激活伤害反弹护盾（对空气右键走OnItemTryUse，
+			# 两条入口同一去处，去重见HandleReflectPotionUse）
+			self.HandleReflectPotionUse(playerId)
 			return
 		if itemType == 'speed':
 			# 手持加速药水右键 -> 给自己提速（对空气右键走OnItemTryUse，
 			# 两条入口同一去处，去重见HandleSpeedPotionUse）
 			self.HandleSpeedPotionUse(playerId)
+			return
+		if itemType == 'brush':
+			# 手持笔刷右键 -> 在比分文字板附近给自己涂一场胜场（对空气右键走
+			# OnItemTryUse，两条入口同一去处，去重见HandleBrushUse）
+			self.HandleBrushUse(playerId)
 			return
 		if itemType == 'board':
 			# 手持便携棋盘右键棋盘平面或低一层的地面 -> 铺一格1x1棋盘格（见HandleCellPlace）
@@ -763,12 +967,12 @@ class GomokuServerSystem(ServerSystem):
 				return
 			self.HandleSwapUse(playerId)
 			return
-		if itemName == config.AntiDamageItemName:
-			# 转移符与换位符同款双入口：对空气右键只有本事件接得住（见OnItemUseOn注释）
+		if itemName == config.ReflectPotionItemName:
+			# 反伤药水与换位符同款双入口：对空气右键只有本事件接得住（见OnItemUseOn注释）
 			if self.IsRespawnHeld(playerId):
 				self.TellRespawnHeld(playerId)
 				return
-			self.HandleTransferUse(playerId)
+			self.HandleReflectPotionUse(playerId)
 			return
 		if itemName == config.SpeedPotionItemName:
 			# 加速药水同款双入口：对空气右键只有本事件接得住（见OnItemUseOn注释）
@@ -777,14 +981,21 @@ class GomokuServerSystem(ServerSystem):
 				return
 			self.HandleSpeedPotionUse(playerId)
 			return
+		if itemName == config.BrushItemName:
+			# 笔刷同款双入口：站在记分牌前多半是对着空气右键，主要靠本事件接住
+			if self.IsRespawnHeld(playerId):
+				self.TellRespawnHeld(playerId)
+				return
+			self.HandleBrushUse(playerId)
+			return
 		# 其他物品的右键不在本事件处理（避免与OnItemUseOn双触发）
 
 	def HandlePlace(self, playerId, pos):
 		"""手持棋子物品右键棋盘基座（主盘或扩展格）-> 落子（占用/终局校验与
 		胜负判定委托给引擎；扩展格的子与主盘的子互相连线）"""
 		carriedItem = self.GetCarriedItemName(playerId)
-		side = self.GetPlayerSide(playerId)
-		logger.info("[Gomoku] 落子请求: pos={} 手持={} 阵营={}".format(pos, carriedItem, side))
+		pieceValue = self.GetPlayerPieceValue(playerId)
+		logger.info("[Gomoku] 落子请求: pos={} 手持={} 棋子值={}".format(pos, carriedItem, pieceValue))
 		if not self.IsPlayableCell(pos):
 			# 原为静默return，加日志便于排查点击位置和棋盘范围不吻合的情况
 			logger.warning("[Gomoku] 落子点不在棋盘上: {} (主盘范围 {})".format(pos, self.GetBoardBounds()))
@@ -796,17 +1007,17 @@ class GomokuServerSystem(ServerSystem):
 		# 方阵棋子（2x2铺子）：占位规则不同（四格内部分合法即可落），走独立流程
 		itemCfg = config.ItemTable.get(carriedItem)
 		if itemCfg and itemCfg.get('square'):
-			self.HandleSquarePlace(playerId, bx, by, side)
+			self.HandleSquarePlace(playerId, bx, by, pieceValue)
 			return
 		if self.board.get(bx, by) != EMPTY:
 			self.Announce("§c此处已有棋子")
 			return
-		if side is None:
-			self.Announce("§c落子需要先加入队伍")
+		if pieceValue is None and not config.DebugSoloAlternateSides:
+			self.Announce("§c落子失败：本局还没给你分配棋子（满员旁观/等待开局）")
 			return
 		if config.DebugSoloAlternateSides:
-			# 调试模式（config开关）：单人无法测双方，落子黑白交替；金棋子不受影响
-			side = 'white' if self.debugPlaceCount % 2 == 0 else 'black'
+			# 调试模式（config开关）：单人无法测多方，落子在两个棋子值间交替；金棋子不受影响
+			pieceValue = 1 if self.debugPlaceCount % 2 == 0 else 2
 			self.debugPlaceCount += 1
 		if carriedItem is None:
 			logger.warning("[Gomoku] 无法读取手持物品，落子中止")
@@ -815,20 +1026,18 @@ class GomokuServerSystem(ServerSystem):
 		if not itemCfg or itemCfg['type'] != 'piece':
 			self.Announce("§c请手持棋子右键棋盘落子")
 			return
-		# 消耗棋子，按队伍颜色落子（金棋子为万能挡子，不分颜色）；
-		# 硬化棋子落成硬化棋石——外观与普通棋石同色，但挖掘耗时更长（destroy_time更大）
+		# 消耗棋子，按落子玩家的棋子值入引擎（乱斗模式棋石外观统一用黑棋石，
+		# 归属只存在引擎值里；金棋子为万能挡子，不分归属）；
+		# 硬化棋子落成硬化棋石——外观与普通棋石同款，但挖掘耗时更长（destroy_time更大）
 		if not self.ConsumeCarriedItem(playerId):
 			return
 		hardened = bool(itemCfg.get('hardened'))
 		if itemCfg.get('wildcard'):
 			stoneName = config.StoneGoldName
 			player = GOMOKU_GOLD
-		elif side == 'black':
-			stoneName = config.StoneBlackHardenedName if hardened else config.StoneBlackName
-			player = BLACK
 		else:
-			stoneName = config.StoneWhiteHardenedName if hardened else config.StoneWhiteName
-			player = WHITE
+			stoneName = config.StoneBlackHardenedName if hardened else config.StoneBlackName
+			player = pieceValue
 		stonePos = self.GridToWorld(bx, by)
 		self.RunCommand('/setblock {} {} {} {}'.format(stonePos[0], stonePos[1], stonePos[2], stoneName))
 		result = self.PlaceInEngine(bx, by, player)
@@ -842,17 +1051,18 @@ class GomokuServerSystem(ServerSystem):
 		else:
 			self.CheckBoardFull()
 
-	def HandleSquarePlace(self, playerId, bx, by, side):
+	def HandleSquarePlace(self, playerId, bx, by, pieceValue):
 		"""方阵棋子落子：以点击格为2x2左上角，向 +X/+Z 方向铺四枚己方普通棋子。
 		越界或已占的格子忽略，只落合法格；四格全不合法则不消耗、播报原因。
-		颜色=落子方队伍（与普通棋子一致），消耗一次即铺下全部合法格；
-		中途成五/满盘立即结算，剩余格子不再落。方阵棋子占用MaxCarriedPieces一个名额"""
-		if side is None:
-			self.Announce("§c落子需要先加入队伍")
+		棋子归属=落子玩家的棋子值（乱斗模式棋石外观统一，归属只在引擎值里），
+		消耗一次即铺下全部合法格；中途成五/满盘立即结算，剩余格子不再落。
+		方阵棋子占用MaxCarriedPieces一个名额"""
+		if pieceValue is None and not config.DebugSoloAlternateSides:
+			self.Announce("§c落子失败：本局还没给你分配棋子（满员旁观/等待开局）")
 			return
 		if config.DebugSoloAlternateSides:
-			# 调试模式（config开关）：单人无法测双方，落子黑白交替
-			side = 'white' if self.debugPlaceCount % 2 == 0 else 'black'
+			# 调试模式（config开关）：单人无法测多方，落子在两个棋子值间交替
+			pieceValue = 1 if self.debugPlaceCount % 2 == 0 else 2
 			self.debugPlaceCount += 1
 		# 四个目标格（左上/右上/左下/右下），先按 可落子格+空格 过滤
 		# （可落子格=主盘9x9或扩展格，见IsPlayableGridCell——引擎网格99x99，
@@ -867,10 +1077,7 @@ class GomokuServerSystem(ServerSystem):
 			return
 		if not self.ConsumeCarriedItem(playerId):
 			return
-		if side == 'black':
-			stoneName, player = config.StoneBlackName, BLACK
-		else:
-			stoneName, player = config.StoneWhiteName, WHITE
+		stoneName, player = config.StoneBlackName, pieceValue
 		placed = 0
 		for cx, cy in legalCells:
 			stonePos = self.GridToWorld(cx, cy)
@@ -922,48 +1129,52 @@ class GomokuServerSystem(ServerSystem):
 		self.OnGameEnd(None, [])
 
 	def HandleInkUse(self, playerId, pos):
-		"""手持墨水右键棋盘上的棋石 -> 转化为己方颜色（墨水耐久1，用一次即碎）。
-		只对敌方黑/白棋石生效：金棋子无阵营不可转化，己方棋石无需转化。
-		硬化属性保留（墨水只换颜色不换材质）；引擎侧先删旧子再落新子（同格改值），
+		"""手持墨水右键棋盘上的棋石 -> 转化为己方（墨水耐久1，用一次即碎）。
+		乱斗模式棋石外观不区分归属，归属的事实来源是引擎网格里的棋子值：
+		非己方值即可转化（持有者是谁看GetPieceOwnerName，含已离场者的子）；
+		金棋子（GOMOKU_GOLD）无归属不可转化，己方棋石无需转化。
+		硬化属性保留（墨水只换归属不换材质）；引擎侧先删旧子再落新子（同格改值），
 		转化补齐五连同 normal 落子一样判胜。陷阱雷跟着格子走：被转化的陷阱棋石
-		换色后仍是陷阱，挖它照样炸（trapCells不因转化而清）"""
+		换主后仍是陷阱，挖它照样炸（trapCells不因转化而清）"""
 		if not self.IsStoneSlot(pos):
 			return  # 点击的不是任何棋盘格的落子层（与HandleStoneBreak同判定）
 		if self.board.state != STATE_PLAYING:
 			self.Announce("§c对局已结束，请等待下一轮")
 			return
-		side = self.GetPlayerSide(playerId)
-		if side is None:
-			self.Announce("§c使用墨水需要先加入队伍")
+		pieceValue = self.GetPlayerPieceValue(playerId)
+		if pieceValue is None:
+			self.Announce("§c使用墨水失败：本局还没给你分配棋子（满员旁观/等待开局）")
 			return
 		blockName = self.GetBlockName(pos)
-		stoneSide = config.StoneSideDict.get(blockName) if blockName else None
-		if stoneSide is None:
+		if not blockName or blockName not in config.StoneBlockNameSet:
 			return  # 落子层但不是棋石（正常不会有），静默忽略
-		if stoneSide == 'gold':
-			self.Announce("§c金棋子无阵营，墨水对它无效")
+		if blockName == config.StoneGoldName:
+			self.Announce("§c金棋子无归属，墨水对它无效")
 			return
-		if stoneSide == side:
-			self.Announce("§c这是己方棋子，不需要墨水")
+		bx, by = self.WorldToGrid(pos)
+		targetValue = self.board.get(bx, by)
+		if targetValue == EMPTY:
+			return  # 方块在但引擎无子（浮空棋石等异常），静默忽略
+		if targetValue == pieceValue:
+			self.Announce("§c这是你自己的棋子，不需要墨水")
 			return
 		if not self.ConsumeCarriedItem(playerId):
 			return
 		# 己方棋石（敌方硬化棋石转化后保留硬化：挖掘更久的属性跟着格子走）
-		hardened = blockName in (config.StoneBlackHardenedName, config.StoneWhiteHardenedName)
-		if side == 'black':
-			stoneName = config.StoneBlackHardenedName if hardened else config.StoneBlackName
-			player = BLACK
-		else:
-			stoneName = config.StoneWhiteHardenedName if hardened else config.StoneWhiteName
-			player = WHITE
-		bx, by = self.WorldToGrid(pos)
+		hardened = blockName == config.StoneBlackHardenedName
+		stoneName = config.StoneBlackHardenedName if hardened else config.StoneBlackName
 		self.RunCommand('/setblock {} {} {} {}'.format(pos[0], pos[1], pos[2], stoneName))
 		# 引擎同步：remove+place（remove失败=计数脱同步，place会自愈补上该格）
 		self.board.remove(bx, by)
-		result = self.PlaceInEngine(bx, by, player)
-		self.Announce("§5一瓶墨水泼下，§6{}§5的一枚棋子被转化了！".format(
-			config.SideNameDict.get(stoneSide, stoneSide)))
-		logger.info("[Gomoku] 墨水转化: {} {} -> {} ({})".format(pos, blockName, stoneName, playerId))
+		result = self.PlaceInEngine(bx, by, pieceValue)
+		ownerName = self.GetPieceOwnerName(targetValue) if targetValue != GOMOKU_GOLD else None
+		if ownerName is None:
+			ownerText = "已离场玩家" if targetValue != GOMOKU_GOLD else "金棋子"
+		else:
+			ownerText = ownerName
+		self.Announce("§5一瓶墨水泼下，§6{}§5的一枚棋子被转化了！".format(ownerText))
+		logger.info("[Gomoku] 墨水转化: {} 值{} -> 值{} ({})".format(
+			pos, targetValue, pieceValue, playerId))
 		if result.state == STATE_WON:
 			self.OnGameEnd(result.winning_player, result.winning_lines)
 
@@ -1068,12 +1279,12 @@ class GomokuServerSystem(ServerSystem):
 		logger.info("[Gomoku] 破盘镐拆格: {} ({})".format(pos, playerId))
 
 	def HandleSwapUse(self, playerId):
-		"""换位符：与最近的敌方玩家互换位置。触发=手持时右键（单击即可）：
-		准星指着方块走ServerItemUseOnEvent、对空气右键走ServerItemTryUseEvent，
-		两条入口都到这里，swapTriggerTime去重（同一次点击可能两个事件都到）。
-		目标=距离最近的不同阵营玩家（TeamMod缺失/本方无阵营时退化为任意其他玩家）；
-		双方坐标先一起读、再一起写，任一侧传送失败则回滚，失败不消耗道具。
-		SetPos行为与/tp一致（官方文档），双方都传送成功才用掉换位符"""
+		"""换位符：与随机一名其他玩家互换位置（乱斗模式目标=随机抽取——2人时
+		即唯一对手，多人时按用户规则随机换，不再挑"最近敌人"）。触发=手持时右键
+		（单击即可）：准星指着方块走ServerItemUseOnEvent、对空气右键走
+		ServerItemTryUseEvent，两条入口都到这里，swapTriggerTime去重（同一次
+		点击可能两个事件都到）。双方坐标先一起读、再一起写，任一侧传送失败则回滚，
+		失败不消耗道具。SetPos行为与/tp一致（官方文档），双方都传送成功才用掉换位符"""
 		now = time.time()
 		if now - self.swapTriggerTime.get(playerId, 0) < 1.0:
 			return  # 1秒内已触发过（UseOn与TryUse双事件去重，也防连点）
@@ -1088,24 +1299,19 @@ class GomokuServerSystem(ServerSystem):
 		if not myPos:
 			self.Announce("§c换位失败：无法读取你的位置")
 			return
-		mySide = self.GetPlayerSide(playerId)
-		# 挑最近的换位目标：排除自己；排除队友（mySide为None时不过滤，退化处理）
-		targetId, targetPos, bestDist = None, None, None
+		# 收集全部可交换的其他玩家（位置读得出来的），随机挑一个
+		candidates = []
 		for pid in serverApi.GetPlayerList():
 			if pid == playerId:
 				continue
-			if mySide is not None and self.GetPlayerSide(pid) == mySide:
-				continue
 			otherPosComp = posCompFactory.CreatePos(pid)
 			otherPos = otherPosComp.GetPos() if otherPosComp else None
-			if not otherPos:
-				continue
-			dist = sum((otherPos[i] - myPos[i]) ** 2 for i in range(3))
-			if bestDist is None or dist < bestDist:
-				targetId, targetPos, bestDist = pid, otherPos, dist
-		if targetId is None:
-			self.Announce("§c换位失败：场上没有可交换的敌方玩家")
+			if otherPos:
+				candidates.append((pid, otherPos))
+		if not candidates:
+			self.Announce("§c换位失败：场上没有可交换的其他玩家")
 			return
+		targetId, targetPos = random.choice(candidates)
 		# 互换（文档注明在床上时SetPos返回False——任一侧失败都回滚，道具不消耗）
 		okA = posCompFactory.CreatePos(playerId).SetPos(targetPos)
 		okB = posCompFactory.CreatePos(targetId).SetPos(myPos)
@@ -1130,56 +1336,33 @@ class GomokuServerSystem(ServerSystem):
 			logger.warning("[Gomoku] GetName 失败: {}".format(e))
 			return entityId
 
-	def HandleTransferUse(self, playerId):
-		"""转移符：右键激活护盾——下一次受到的真实伤害不落在自己身上，全额转给
-		最近的敌方玩家（转移逻辑见OnDamage）。触发后护盾消失；护盾不跨局
-		（OnRoundStart清空）。与换位符同款双入口（指方块右键走OnItemUseOn、
-		对空气右键走OnItemTryUse），transferUseTime做1秒去重防同次点击双触发"""
+	def HandleReflectPotionUse(self, playerId):
+		"""反伤药水：右键激活护盾——下一次受到来自其他玩家的真实伤害（攻击或
+		玩家道具）时不落在自己身上，全额反弹给伤害来源（反弹逻辑见OnDamage）。
+		坠落等自然伤害/中立来源不触发反弹、护盾保留。触发后护盾消失；护盾
+		不跨局（OnRoundStart清空）。与换位符同款双入口（指方块右键走
+		OnItemUseOn、对空气右键走OnItemTryUse），reflectUseTime做1秒去重
+		防同次点击双触发"""
 		now = time.time()
-		if now - self.transferUseTime.get(playerId, 0) < 1.0:
+		if now - self.reflectUseTime.get(playerId, 0) < 1.0:
 			return
-		self.transferUseTime[playerId] = now
-		logger.info("[Gomoku] 转移符右键: {} 手持={}".format(playerId, self.GetCarriedItemName(playerId)))
+		self.reflectUseTime[playerId] = now
+		logger.info("[Gomoku] 反伤药水右键: {} 手持={}".format(playerId, self.GetCarriedItemName(playerId)))
 		if not self.ConsumeCarriedItem(playerId):
 			return
-		refreshed = playerId in self.transferShieldSet
-		self.transferShieldSet.add(playerId)
+		refreshed = playerId in self.reflectShieldSet
+		self.reflectShieldSet.add(playerId)
 		if refreshed:
-			self.SendMessageToPlayer(playerId, "§d转移符护盾已刷新：下次受到的伤害将转给敌人")
+			self.SendMessageToPlayer(playerId, "§d反伤药水护盾已刷新：下次受到的玩家伤害将反弹给来源")
 		else:
-			self.SendMessageToPlayer(playerId, "§d转移符护盾已激活：下次受到的伤害将转给敌人")
-
-	def FindNearestEnemyPlayer(self, playerId):
-		"""距playerId最近的不同阵营玩家（TeamMod缺失/本方无阵营时退化为任意其他玩家）；
-		跳过阵亡冷却中的玩家（其伤害会被OnDamage清零，转给他们等于白转）；
-		场上没有可选目标返回None。换位符的目标挑选同款规则"""
-		posCompFactory = serverApi.GetEngineCompFactory()
-		myPosComp = posCompFactory.CreatePos(playerId)
-		myPos = myPosComp.GetPos() if myPosComp else None
-		if not myPos:
-			return None
-		mySide = self.GetPlayerSide(playerId)
-		targetId, bestDist = None, None
-		for pid in serverApi.GetPlayerList():
-			if pid == playerId or self.IsRespawnHeld(pid):
-				continue
-			if mySide is not None and self.GetPlayerSide(pid) == mySide:
-				continue
-			otherPosComp = posCompFactory.CreatePos(pid)
-			otherPos = otherPosComp.GetPos() if otherPosComp else None
-			if not otherPos:
-				continue
-			dist = sum((otherPos[i] - myPos[i]) ** 2 for i in range(3))
-			if bestDist is None or dist < bestDist:
-				targetId, bestDist = pid, dist
-		return targetId
+			self.SendMessageToPlayer(playerId, "§d反伤药水护盾已激活：下次受到的玩家伤害将反弹给来源")
 
 	# ---------- 加速药水 ----------
 
 	def HandleSpeedPotionUse(self, playerId):
 		"""加速药水：右键给自己提速——引擎移动速度(SPEED属性)在基础值上提升
 		config.SpeedPotionPercent 百分比，持续 config.SpeedPotionDuration 秒后
-		自动恢复原速（见SpeedBoostExpire）。与换位符/转移符同款双入口
+		自动恢复原速（见SpeedBoostExpire）。与换位符/反伤药水同款双入口
 		（指方块右键走OnItemUseOn、对空气右键走OnItemTryUse），speedPotionUseTime
 		做1秒去重防同次点击双触发。连喝不叠加：提速幅度始终按第一次喝之前的
 		基础值算，只把持续时间重置满（speedPotionCoroutineDict顶掉旧到期协程）"""
@@ -1249,6 +1432,52 @@ class GomokuServerSystem(ServerSystem):
 		self.speedPotionCoroutineDict = {}
 		self.speedPotionBaseDict = {}
 
+	# ---------- 笔刷：在比分文字板上给自己涂一场胜场 ----------
+
+	def HandleBrushUse(self, playerId):
+		"""笔刷：走到比分文字板（config.ScoreBoardAnchor，编辑器TextAnchor预设位置）
+		附近右键 -> 自己的系列赛胜场+config.BrushWinBonus，用一次即碎。
+		距离是这件道具的全部成本：须在config.BrushUseRadius格内（三维直线距离），
+		否则只提示、不消耗——离盘远远地偷偷加分不算数，得当众走到记分牌前。
+		与换位符/药水同款双入口（指方块右键走OnItemUseOn、对空气右键走
+		OnItemTryUse——站在记分牌前多半是对着空气点，主要靠后者），brushUseTime
+		做1秒去重防同次点击双触发。
+		★成功后立刻广播比分（BroadcastScoreBoard），文字板当场跳数"""
+		now = time.time()
+		if now - self.brushUseTime.get(playerId, 0) < 1.0:
+			return
+		self.brushUseTime[playerId] = now
+		logger.info("[Gomoku] 笔刷右键: {} 手持={}".format(playerId, self.GetCarriedItemName(playerId)))
+		if not config.ScoreBoardAnchor:
+			# 比分文字板功能关掉了，笔刷无处可涂（不消耗，免得白扣一个道具）
+			self.SendMessageToPlayer(playerId, "§c本局没有比分记分牌，笔刷无处可用")
+			return
+		posComp = serverApi.GetEngineCompFactory().CreatePos(playerId)
+		myPos = posComp.GetPos() if posComp else None
+		if not myPos:
+			self.SendMessageToPlayer(playerId, "§c笔刷失败：无法读取你的位置")
+			logger.warning("[Gomoku] 笔刷读取位置失败: {}".format(playerId))
+			return
+		# 锚点方块中心与玩家的三维直线距离
+		anchor = config.ScoreBoardAnchor
+		dx = myPos[0] - (anchor[0] + 0.5)
+		dy = myPos[1] - anchor[1]
+		dz = myPos[2] - (anchor[2] + 0.5)
+		distance = math.sqrt(dx * dx + dy * dy + dz * dz)
+		if distance > config.BrushUseRadius:
+			self.SendMessageToPlayer(playerId, "§c离比分记分牌太远（还差{:.1f}格），走近点再涂".format(
+				distance - config.BrushUseRadius))
+			return
+		if not self.ConsumeCarriedItem(playerId):
+			return
+		self.playerWinCountDict[playerId] = self.playerWinCountDict.get(playerId, 0) + config.BrushWinBonus
+		self.BroadcastScoreBoard()
+		playerName = self.GetPlayerName(playerId) or "玩家"
+		self.Announce("§e{}§f用笔刷在记分牌上给自己涂了§6{}§f分（现有{}胜）！".format(
+			playerName, config.BrushWinBonus, self.playerWinCountDict[playerId]))
+		logger.info("[Gomoku] 笔刷涂分: {} +{} -> {} (距记分牌{:.2f}格)".format(
+			playerId, config.BrushWinBonus, self.playerWinCountDict[playerId], distance))
+
 	# ---------- 便携棋盘：铺扩展格 ----------
 
 	def HandleCellPlace(self, playerId, pos):
@@ -1257,10 +1486,11 @@ class GomokuServerSystem(ServerSystem):
 		校验（不满足只提示、不铺也不扣耐久）：
 		  1. 高度：点击的方块须是主盘基座层（棋盘平面）或低一层（贴地右键即可——
 		     主盘基座本来就比自然地表高一格，新格子铺在基座层高度、正好坐在地面上）；
-		  2. 不在主盘范围内、该列也没铺过扩展格（一格只能铺一次）；
+		  2. 该列不是主盘本局真实存在的格子（boardCells）、也没铺过扩展格——
+		     随机剔除的缺格/被破盘镐拆掉的格子可以补铺（补进extensionCells统一管理）；
 		  3. 距主盘中心不超过CellPlaceMaxRadius（须在引擎网格与棋盘常驻加载区内）；
 		  4. 目标格没有被矿/棋石/雷管/问号方块占着（避免铺格顶掉资源导致计数脱同步）；
-		  5. 需已加入队伍（与落子一致）。
+		  5. 需已分配本局棋子值（与落子一致）。
 		铺一格耐久-1（归零销毁，见DamageBoardItem）；回合重置时扩展格随主盘一起拆除"""
 		y1 = self.GetBoardBounds()[1]
 		if pos[1] not in (y1 - 1, y1):
@@ -1269,16 +1499,22 @@ class GomokuServerSystem(ServerSystem):
 		if self.board.state != STATE_PLAYING:
 			self.Announce("§c对局已结束，请等待下一轮")
 			return
-		if self.GetPlayerSide(playerId) is None:
-			self.Announce("§c摆放棋盘格需要先加入队伍")
+		if self.GetPlayerPieceValue(playerId) is None:
+			self.Announce("§c摆放棋盘格失败：本局还没给你分配棋子（满员旁观/等待开局）")
 			return
 		x, z = pos[0], pos[2]
-		# 用范围判定而非IsOnBoard：随机形状的缺格仍在主盘领地内，不能往缺格里铺
-		if self.IsInBoardArea((x, y1, z)):
+		# 只拦boardCells（主盘本局真实存在的格子）；随机剔除的缺格不在里面，允许补铺。
+		# 缺格在基座层是空气，右键落点是低一层的地表（高度校验放行），铺回的是基座层
+		if (x, z) in self.boardCells:
 			self.Announce("§c摆放失败：这里已经在主棋盘上了")
 			return
 		if (x, z) in self.extensionCells:
 			self.Announce("§c摆放失败：这里已经铺过一格棋盘了")
+			return
+		# 便携棋盘走的是道具逻辑、不经过引擎的放置事件，这里补一次模式表决
+		# （陷阱模式下不许拿棋盘格把陷阱格垫成实心的）
+		if not self.gameMode.CanPlaceBlock(playerId, x, y1, z):
+			self.Announce("§c摆放失败：这一格不是实心地面，铺不住")
 			return
 		cx, cy, cz = self.EnsureBoardCenter()
 		if (x - cx) ** 2 + (z - cz) ** 2 > config.CellPlaceMaxRadius ** 2:
@@ -1539,17 +1775,14 @@ class GomokuServerSystem(ServerSystem):
 		engineTypeComp = serverApi.CreateComponent(victimId, config.Minecraft, config.EngineTypeComponent)
 		if not engineTypeComp or engineTypeComp.GetEngineTypeStr() != 'minecraft:player':
 			return
-		# 同队免伤（与TeamMod友伤抑制一致；本系统先于/后于TeamMod触发结果都一样：
-		# 这里不设9999就不会覆盖TeamMod写下的damage=0，剑也不消耗）
-		attackerSide = self.GetPlayerSide(attackerId)
-		if attackerSide is not None and attackerSide == self.GetPlayerSide(victimId):
-			return
+		# 乱斗模式无队友概念（TeamMod只作出生点/计分板基础设施，友伤已在
+		# teamConfig打开canHurtTeammate）：所有其他玩家都是合法目标
 		itemCfg = config.ItemTable.get(self.GetCarriedItemName(attackerId))
 		if not itemCfg or itemCfg['type'] != 'weapon':
 			return
 		if itemCfg.get('dizzy'):
 			# 眩晕锤：零伤害（damage=0+isValid成对才生效），改为眩晕+缴械掉落
-			# （见HandleDizzyHammerHit）；锤中敌方即碎，同队/冷却目标上面已提前返回
+			# （见HandleDizzyHammerHit）；锤中敌方即碎，冷却目标上面已提前返回
 			args['damage'] = 0
 			args['isValid'] = 1
 			self.HandleDizzyHammerHit(attackerId, victimId)
@@ -1626,7 +1859,12 @@ class GomokuServerSystem(ServerSystem):
 		这里登记DeathRespawnHoldSeconds的行动封锁并启动倒计时，时间到自动解锁"""
 		playerId = args.get('id')
 		holdSeconds = config.DeathRespawnHoldSeconds
-		if not playerId or holdSeconds <= 0:
+		if not playerId:
+			return
+		# 玩法模式的阵亡钩子要先走（与阵亡冷却是否开着无关）：陷阱模式靠它把
+		# 重生的人挪到棋盘边的安全区，引擎复活点再准也可能落在陷阱格上
+		self.gameMode.OnPlayerDie(playerId)
+		if holdSeconds <= 0:
 			return
 		self.respawnHoldUntilDict[playerId] = time.time() + holdSeconds
 		self.Announce("§c{}阵亡！§e{}§c秒后在棋盘附近复活".format(
@@ -1678,50 +1916,65 @@ class GomokuServerSystem(ServerSystem):
 		remaining = max(1, int(round(self.respawnHoldUntilDict.get(playerId, 0) - now)))
 		self.SendMessageToPlayer(playerId, "§c阵亡冷却中，§e{}§c秒后恢复行动".format(remaining))
 
+	def IsPlayerEntity(self, entityId):
+		"""entityId是真实玩家（OnPlayerAttack同款engineType判定）。反伤药水
+		只反弹"玩家造成的"伤害，箭矢/掉落物等非玩家实体一律不算"""
+		if not entityId:
+			return False
+		engineTypeComp = serverApi.CreateComponent(entityId, config.Minecraft, config.EngineTypeComponent)
+		return bool(engineTypeComp and engineTypeComp.GetEngineTypeStr() == 'minecraft:player')
+
 	def OnDamage(self, args):
 		"""阵亡冷却期间免疫一切伤害（防复活点被连杀蹲尸；伤害清零写法对照StartLogic等待区无敌）；
-		转移符护盾：受到真实伤害时不落地，本体清零，全额转给最近的敌方玩家
-		（Hurt接口，伤害来源/击杀归属沿用本次攻击；环境伤害无来源时归护盾主人）"""
+		反伤药水护盾：受到来自其他玩家的真实伤害（攻击或玩家道具）时不落地，
+		本体清零，全额反弹给伤害来源（Hurt接口，击杀归属记在护盾主人名下）。
+		坠落等自然伤害/中立来源（无来源/'-1'/来源是自己或非玩家实体）不触发
+		反弹——伤害照常落在自己身上，护盾保留等下一次"""
 		victimId = args.get('entityId')
 		if self.IsRespawnHeld(victimId):
 			args['damage'] = 0
 			return
-		if victimId not in self.transferShieldSet:
+		if victimId not in self.reflectShieldSet:
 			return
 		damage = args.get('damage') or 0
 		if damage <= 0:
-			return  # 没有真实伤害（如队友免伤清零）：护盾保留，等下一次
-		targetId = self.FindNearestEnemyPlayer(victimId)
-		if targetId is None:
-			return  # 场上没有可转移的敌人：护盾保留，本次伤害照常落在自己身上
-		# 护盾先失效再转移（若敌人也带护盾，由对方的护盾接手，不会来回弹）
-		self.transferShieldSet.discard(victimId)
-		args['damage'] = 0
+			return  # 没有真实伤害（如免伤清零）：护盾保留，等下一次
 		srcId = args.get('srcId')
-		attackerId = srcId if srcId and srcId != '-1' else victimId
+		if not srcId or srcId == '-1' or srcId == victimId or not self.IsPlayerEntity(srcId):
+			return  # 自然伤害（坠落等）或中立来源：不触发反弹，伤害照常落在自己身上
+		# 护盾先失效再反弹（若来源也带着护盾，由对方的护盾接手，不会来回弹）
+		self.reflectShieldSet.discard(victimId)
+		args['damage'] = 0
 		cause = args.get('cause') or 'entity_attack'
-		hurtComp = serverApi.GetEngineCompFactory().CreateHurt(targetId)
-		if not hurtComp or not hurtComp.Hurt(damage, cause, attackerId, None, True):
-			logger.warning("[Gomoku] 转移符伤害转移失败: {} -> {} damage={}".format(victimId, targetId, damage))
+		hurtComp = serverApi.GetEngineCompFactory().CreateHurt(srcId)
+		if not hurtComp or not hurtComp.Hurt(damage, cause, victimId, None, True):
+			logger.warning("[Gomoku] 反伤药水反弹失败: {} -> {} damage={}".format(victimId, srcId, damage))
 			return
-		self.Announce("§d转移符生效！{}§d受到的§e{}点§d伤害转给了{}§d！".format(
+		self.Announce("§d反伤药水生效！{}§d受到的§e{}点§d伤害反弹给了{}§d！".format(
 			self.GetPlayerName(victimId) or "玩家", int(round(damage)),
-			self.GetPlayerName(targetId) or "敌方玩家"))
-		logger.info("[Gomoku] 转移符生效: {} -> {} damage={} cause={} attacker={}".format(
-			victimId, targetId, damage, cause, attackerId))
+			self.GetPlayerName(srcId) or "玩家"))
+		logger.info("[Gomoku] 反伤药水生效: {} -> {} damage={} cause={}".format(
+			victimId, srcId, damage, cause))
 
 	def OnDelServerPlayer(self, args):
-		"""玩家退出：清掉阵亡冷却/转移符护盾/加速药水登记（相关协程下一轮自然结束）"""
+		"""玩家退出：清掉阵亡冷却/反伤药水护盾/加速药水/乱斗棋子值登记（相关协程
+		下一轮自然结束）。退出玩家的棋子值本局作废不回收（棋子还留在盘上，防
+		止后来的玩家"继承"，见TryAssignPieceValue）"""
 		playerId = args.get('id')
 		self.respawnHoldUntilDict.pop(playerId, None)
-		self.transferShieldSet.discard(playerId)
+		self.reflectShieldSet.discard(playerId)
 		self.speedPotionBaseDict.pop(playerId, None)
 		self.speedPotionUseTime.pop(playerId, None)
+		self.brushUseTime.pop(playerId, None)
 		self.dizzyStunUntilDict.pop(playerId, None)
+		self.playerPieceValueDict.pop(playerId, None)
 		oldBoost = self.speedPotionCoroutineDict.pop(playerId, None)
 		if oldBoost is not None:
 			CoroutineMgr.StopCoroutine(oldBoost)
 		self.playerIds.discard(playerId)
+		self.gameMode.OnPlayerRemove(playerId)
+		# 比分文字板去掉这一行（胜场记录本身留着，人不在就不显示）
+		self.BroadcastScoreBoard()
 
 	def SetEngineRespawnPoint(self, playerId):
 		"""把玩家的引擎复活点设到棋盘外沿。无床玩家默认在世界出生点重生，本图出生点
@@ -1741,9 +1994,18 @@ class GomokuServerSystem(ServerSystem):
 
 	def GetEngineRespawnPos(self):
 		"""引擎复活点世界坐标：棋盘南侧外沿（config.RespawnPosOffset），y取实测地表，
-		查询失败退回基座层Y+备用偏移"""
+		查询失败退回基座层Y+备用偏移。乱斗模式棋盘随人数扩容，z偏移不够盖过
+		实际半边长时自动外推（保底半边长+2格，落在盘外），config不必手改"""
+		# 玩法模式可以自己指定复活点（陷阱模式必须落在棋盘外那2圈安全区里，
+		# 下面的通用外沿算法算出来的点可能正好在陷阱区）；返回None就照旧
+		modeRespawnPos = self.gameMode.GetRespawnPos()
+		if modeRespawnPos is not None:
+			return modeRespawnPos
 		cx, cy, cz = self.EnsureBoardCenter()
 		dx, dyFallback, dz = config.RespawnPosOffset
+		half = self.boardSize // 2
+		if abs(dz) <= half:
+			dz = (half + 2) if dz >= 0 else -(half + 2)
 		x, z = cx + dx, cz + dz
 		surfaceY = self.FindSurfaceY(x, z)
 		return (x, surfaceY if surfaceY is not None else cy + dyFallback, z)
@@ -1797,53 +2059,55 @@ class GomokuServerSystem(ServerSystem):
 
 	def OnGameEnd(self, winnerPlayer, winningLines):
 		"""对局结束：本地播报 + 通知客户端，并调EndLogic结算本局、重启下一轮。
-		winnerPlayer为None表示平局；winningLines为引擎网格坐标，按主盘中心
-		换算成世界坐标供客户端高亮。结算走EndLogic.ExternalSettleGame
-		（作废定时器+通知胜利+自动重启），不再只调NotifyVictory
+		winnerPlayer为引擎棋子值（乱斗：按值反查持有玩家，None表示平局；
+		持有者已离场按"已离场玩家"播报且本局不记胜场）；winningLines为引擎
+		网格坐标，按主盘中心换算成世界坐标供客户端高亮。结算走EndLogic.
+		ExternalSettleGame（作废定时器+通知胜利+自动重启），不再只调NotifyVictory
 		（那只是播报，本局不会结束，超时结算照常触发）"""
 		logger.info("[Gomoku] 对局结束: 胜方棋子值={} 连珠线={}".format(winnerPlayer, winningLines))
+		winnerId = None
+		if winnerPlayer is not None:
+			for playerId, value in self.playerPieceValueDict.iteritems():
+				if value == winnerPlayer:
+					winnerId = playerId
+					break
 		if winnerPlayer is None:
-			winnerSide = None
+			winnerName = None
 			sideText = "平局"
-			self.Announce("§e棋盘已满，双方平局！")
-			victoryText = "§e棋盘已满，双方平局！"
+			self.Announce("§e棋盘已满，本局平局！")
+			victoryText = "§e棋盘已满，本局平局！"
+		elif winnerId is not None:
+			winnerName = self.GetPlayerName(winnerId) or "玩家"
+			sideText = winnerName
+			# 系列赛胜场+1：跨局累计，新一局不清零（比分文字板的数据来源）
+			self.playerWinCountDict[winnerId] = self.playerWinCountDict.get(winnerId, 0) + 1
+			self.Announce("§6{}§f在棋盘上连成五子，赢得对局！".format(winnerName))
+			victoryText = "§6{}§f在棋盘上连成五子，赢得对局！".format(winnerName)
 		else:
-			winnerSide = 'black' if winnerPlayer == BLACK else 'white'
-			sideText = config.SideNameDict.get(winnerSide, winnerSide)
-			self.Announce("§6{}§f在棋盘上连成五子，赢得对局！".format(sideText))
-			victoryText = "§6{}§f在棋盘上连成五子，赢得对局！".format(sideText)
+			# 调试模式交替落子/持有者已离场：值反查不到人，按离场播报，本局不记胜场
+			winnerName = None
+			sideText = "已离场玩家"
+			self.Announce("§6已离场的玩家§f在棋盘上连成五子，本局无人获胜！")
+			victoryText = "§6已离场的玩家§f在棋盘上连成五子，本局无人获胜！"
 		data = self.CreateEventData()
-		data['winner'] = winnerSide
-		data['text'] = "§6{}§f{}".format(sideText, "获得五子棋对局胜利" if winnerSide else "结束五子棋对局")
+		data['winner'] = winnerName or sideText
+		data['text'] = "§6{}§f{}".format(sideText, "获得五子棋对局胜利" if winnerName else "结束五子棋对局")
 		data['winningLines'] = [
 			[list(self.GridToWorld(bx, by)) for bx, by in line]
 			for line in winningLines
 		]
 		self.BroadcastToAllClient(config.GomokuGameResultEvent, data)
+		# 胜场已记，立刻刷新比分文字板（下一局开始时还会再刷一次换颜色）
+		self.BroadcastScoreBoard()
 		# 胜负与平局都要真正结算本局（平局之前没通知EndLogic，会导致满盘后僵到超时）
 		endLogicServerSystem = serverApi.GetSystem(config.EndLogicModName, config.EndLogicServerSystemName)
 		if endLogicServerSystem:
-			# 系列赛记分需要真实队名（"黑方/白方"只是播报别名）：按胜方阵营反查TeamSideDict；
-			# 平局（winnerSide为None）与调试模式下无法定位队伍时传None，本局不记胜场
-			winnerTeamName = None
-			if winnerSide is not None:
-				for teamName, side in config.TeamSideDict.iteritems():
-					if side == winnerSide:
-						winnerTeamName = teamName
-						break
-			endLogicServerSystem.ExternalSettleGame(sideText, victoryText, None, winnerTeamName)
+			# 系列赛记分需要真实队名：胜者在场时用playerId列表让EndLogic自己反查队伍
+			# （乱斗下队伍只是基础设施，胜负按玩家记）；平局/离场/调试模式传None不记胜场
+			victoryPlayerIdList = [winnerId] if winnerId is not None else None
+			endLogicServerSystem.ExternalSettleGame(sideText, victoryText, victoryPlayerIdList, None)
 		else:
 			self.Announce("§e未找到EndLogic组件，仅做本地播报")
-
-	# ---------- 跨Mod查询 ----------
-
-	def GetPlayerSide(self, playerId):
-		"""通过TeamMod查询玩家队伍，映射到黑白阵营"""
-		teamServerSystem = serverApi.GetSystem(config.TeamModName, config.TeamServerSystemName)
-		if not teamServerSystem:
-			return None
-		teamName = teamServerSystem.GetPlayerTeamName(playerId)
-		return config.TeamSideDict.get(teamName)
 
 	# ---------- 物品/方块操作（写法均对照官方模板：neteaseBattle的GetPlayerEngineItemData、
 	# CustomDimensionTemplate的consumeActiveItem、TutorialGame的SpawnItemToPlayerInv） ----------
@@ -1970,4 +2234,5 @@ class GomokuServerSystem(ServerSystem):
 		pass
 
 	def Destroy(self):
+		self.gameMode.OnExit()
 		self.UnListenEvent()
