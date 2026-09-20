@@ -154,7 +154,26 @@ class TeamServerSystem(ServerSystem):
 		scoreboardInfo = self.CreateEventData()
 		scoreboardInfo["queueScoreList"] = self.queueScoreList
 		scoreboardInfo["queuePlayerCount"] = self.queuePlayerCount
+		# 右侧记分板的"队名"改为该队参赛玩家的名字——"森林之子/火焰使者"
+		# 这种模板队名对本图（乱斗）没有信息量；一队多人时用、连接
+		scoreboardInfo["queuePlayerNameList"] = self.GetQueuePlayerNameList()
 		self.BroadcastToAllClient(teamConfig.UpdateScoreboardEvent, scoreboardInfo)
+
+	# 每队参赛玩家的名字列表（与queueNameDict同下标；空队为空字符串）。
+	# 队伍分配是开局ReQueueAllocation定的，此后玩家进退场都会触发
+	# UpdateScoreboard重新推一遍，名字始终跟着实际在线的队员走
+	def GetQueuePlayerNameList(self):
+		nameList = []
+		for queueIndex in range(self.queueNum):
+			names = []
+			for playerId in self.queueAllocationInfo[queueIndex]:
+				nameComp = self.CreateComponent(playerId, "Minecraft", "name")
+				if nameComp:
+					playerName = nameComp.GetName()
+					if playerName:
+						names.append(playerName)
+			nameList.append('、'.join(names))
+		return nameList
 
 	# 系统PlayerAttackEntityEvent的回调函数，当玩家攻击时触发
 	def OnPlayerAttack(self, args):

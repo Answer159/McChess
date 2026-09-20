@@ -18,8 +18,6 @@ class TeamUIScreen(ScreenNode):
         # 队伍数量
         self.queueNum = teamConfig.queueNum
         self.queueColorDict=teamConfig.queueColorDict
-        #队伍名称映射
-        self.queueNameDict = teamConfig.queueNameDict
 
     # Create函数是继承自ScreenNode，会在UI创建完成后被调用
     def Create(self):
@@ -45,12 +43,13 @@ class TeamUIScreen(ScreenNode):
     # 界面的一些初始化操作
     def Init(self):
         for queueIndex in range(self.queueNum):
-            text = str(self.queueNameDict[queueIndex])
-            self.GetBaseUIControl(self.queueNameList[queueIndex]).asLabel().SetText(text)
             color = self.queueColorDict[queueIndex]
             self.SetTextColor(self.queueNameList[queueIndex], color)
             self.SetTextColor(self.queueScoreList[queueIndex], color)
             self.SetTextColor(self.queueMemNumList[queueIndex], color)
+        # 队名Label不再写死模板队名（"森林之子"这类没信息量），文字由
+        # UpdateScoreboard按服务端推来的该队玩家名刷新
+        # （见teamServerSystem.GetQueuePlayerNameList）
         # 隐藏Label界面
         for i in range(self.queueNum,5):
             self.SetVisible(self.queuePanelList[i], False)
@@ -59,7 +58,11 @@ class TeamUIScreen(ScreenNode):
     def UpdateScoreboard(self,args):
         queueScoreList=args["queueScoreList"]
         queuePlayerCount=args["queuePlayerCount"]
+        queuePlayerNameList=args.get("queuePlayerNameList") or []
         for queueIndex in range(5):
+            if queueIndex < len(queuePlayerNameList):
+                text = str(queuePlayerNameList[queueIndex])
+                self.GetBaseUIControl(self.queueNameList[queueIndex]).asLabel().SetText(text)
             text=str(queueScoreList[queueIndex])
             self.GetBaseUIControl(self.queueScoreList[queueIndex]).asLabel().SetText(text)
             text = str(queuePlayerCount[queueIndex])
