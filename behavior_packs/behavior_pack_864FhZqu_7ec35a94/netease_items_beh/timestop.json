@@ -1,0 +1,16 @@
+{
+    "format_version": "1.10",
+    "minecraft:item": {
+        "description": {
+            "identifier": "wihzo:timestop",
+            "register_to_create_menu": true,
+            "category": "Equipment"
+        },
+        "components": {
+            "minecraft:max_stack_size": 1,
+            "netease:customtips": {
+                "value": "右键使用（对空气也可以）：除你之外的全场玩家被冻结5秒——无法移动/跳跃/挖掘/落子/使用道具/攻击，但仍可转动视角。用一次即碎"
+            }
+        }
+    }
+}

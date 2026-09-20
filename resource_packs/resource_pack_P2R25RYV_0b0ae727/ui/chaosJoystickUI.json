@@ -1,0 +1,122 @@
+{
+  "namespace": "chaosJoystickUI",
+  "touchBtn@common.button": {
+    "$default_color": [
+      1,
+      1,
+      1
+    ],
+    "$default_texture": "",
+    "$labelText": "",
+    "$label_font_size": "normal",
+    "$pressed_button_name": "%chaosJoystickUI.OnJoyPressed",
+    "anchor_from": "top_left",
+    "anchor_to": "top_left",
+    "controls": [
+      {
+        "default": {
+          "layer": 0,
+          "texture": "$default_texture",
+          "type": "image"
+        }
+      },
+      {
+        "hover": {
+          "layer": 0,
+          "texture": "",
+          "type": "image"
+        }
+      },
+      {
+        "pressed": {
+          "layer": 0,
+          "texture": "",
+          "type": "image"
+        }
+      },
+      {
+        "button_label": {
+          "color": "$default_color",
+          "font_size": "$label_font_size",
+          "layer": 5,
+          "shadow": false,
+          "text": "$labelText",
+          "type": "label"
+        }
+      }
+    ],
+    "offset": [
+      "12%-30px",
+      "60%-30px"
+    ],
+    "size": [
+      "200px",
+      "200px"
+    ],
+    "layer": 10,
+    "visible": true
+  },
+  "frameImg": {
+    "type": "image",
+    "anchor_from": "top_left",
+    "anchor_to": "top_left",
+    "offset": [
+      "12%+40px",
+      "60%+40px"
+    ],
+    "size": [
+      "140px",
+      "140px"
+    ],
+    "texture": "textures/ui/joystick_frame",
+    "layer": 11,
+    "visible": true
+  },
+  "knobImg": {
+    "type": "image",
+    "anchor_from": "top_left",
+    "anchor_to": "top_left",
+    "offset": [
+      "12%+78px",
+      "60%+78px"
+    ],
+    "size": [
+      "64px",
+      "64px"
+    ],
+    "texture": "textures/ui/joystick_knob",
+    "layer": 12,
+    "visible": true
+  },
+  "main@common.base_screen": {
+    "controls": [
+      {
+        "joyPanel": {
+          "type": "panel",
+          "anchor_from": "top_left",
+          "anchor_to": "top_left",
+          "offset": [
+            0,
+            0
+          ],
+          "size": [
+            "100%",
+            "100%"
+          ],
+          "layer": 0,
+          "controls": [
+            {
+              "touch@chaosJoystickUI.touchBtn": {}
+            },
+            {
+              "frame@chaosJoystickUI.frameImg": {}
+            },
+            {
+              "knob@chaosJoystickUI.knobImg": {}
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

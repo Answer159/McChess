@@ -15,19 +15,19 @@
             "textures": "textures/items/execution_sword"
         },
         "gomoku_piece_normal": {
-            "textures": "textures/blocks/fragile_chess"
+            "textures": "textures/blocks/chess/fragile_chess"
         },
         "gomoku_piece_hardened": {
-            "textures": "textures/blocks/hard_chess"
+            "textures": "textures/blocks/chess/hard_chess"
         },
         "gomoku_piece_gold": {
-            "textures": "textures/blocks/golden_chess"
+            "textures": "textures/blocks/chess/golden_chess"
         },
         "gomoku_piece_square": {
-            "textures": "textures/blocks/square_chess"
+            "textures": "textures/blocks/chess/square_chess"
         },
         "gomoku_piece_trap": {
-            "textures": "textures/blocks/trap_chess"
+            "textures": "textures/blocks/chess/trap_chess"
         },
         "gomoku_ink": {
             "textures": "textures/items/ink"
@@ -47,8 +47,20 @@
         "dizzy_hammer": {
             "textures": "textures/items/dizzy-hammer"
         },
+        "blackhole": {
+            "textures": "textures/items/blackhole"
+        },
+        "chaos_poison": {
+            "textures": "textures/items/chaospoison"
+        },
+        "timestop": {
+            "textures": "textures/items/timestop"
+        },
+        "gomoku_manual": {
+            "textures": "textures/items/book_normal"
+        },
         "gomoku_board": {
-            "textures": "textures/blocks/chess_base"
+            "textures": "textures/blocks/chess/chess_base"
         },
         "gomoku_brush": {
             "textures": "textures/items/score-brush"

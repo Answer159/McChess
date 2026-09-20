@@ -1,46 +1,62 @@
 {
     "wihzo:McChess_ChessBase": {
-        "textures": "chess_base",
-        "sound": "stone"
-    },
-    "wihzo:gomoku_stone_black": {
-        "textures": "gomoku_stone_black",
-        "sound": "stone"
-    },
-    "wihzo:gomoku_stone_black_hardened": {
-        "textures": "gomoku_stone_black_hardened",
-        "sound": "stone"
-    },
-    "wihzo:gomoku_stone_white": {
-        "textures": "gomoku_stone_white",
-        "sound": "stone"
-    },
-    "wihzo:gomoku_stone_white_hardened": {
-        "textures": "gomoku_stone_white_hardened",
-        "sound": "stone"
-    },
-    "wihzo:gomoku_stone_gold": {
-        "textures": "gomoku_stone_gold",
-        "sound": "stone"
-    },
-    "wihzo:gomoku_ore_normal": {
-        "textures": "gomoku_ore_normal",
-        "sound": "stone"
-    },
-    "wihzo:gomoku_ore_hardened": {
-        "textures": "gomoku_ore_hardened",
-        "sound": "stone"
-    },
-    "wihzo:gomoku_ore_gold": {
-        "textures": "gomoku_ore_gold",
-        "sound": "stone"
-    },
-    "wihzo:gomoku_detonator_block": {
-        "textures": "gomoku_detonator_block",
-        "sound": "grass"
+        "sound": "stone",
+        "textures": "chess_base"
     },
     "wihzo:gomoku_block_random": {
-        "textures": "gomoku_block_random",
-        "sound": "stone"
+        "sound": "stone",
+        "textures": "gomoku_block_random"
+    },
+    "wihzo:gomoku_detonator_block": {
+        "sound": "grass",
+        "textures": "gomoku_detonator_block"
+    },
+    "wihzo:gomoku_ore_gold": {
+        "sound": "stone",
+        "textures": "gomoku_ore_gold"
+    },
+    "wihzo:gomoku_ore_hardened": {
+        "sound": "stone",
+        "textures": "gomoku_ore_hardened"
+    },
+    "wihzo:gomoku_ore_normal": {
+        "sound": "stone",
+        "textures": "gomoku_ore_normal"
+    },
+    "wihzo:gomoku_stone_black": {
+        "sound": "stone",
+        "textures": "gomoku_stone_black"
+    },
+    "wihzo:gomoku_stone_black_hardened": {
+        "sound": "stone",
+        "textures": "gomoku_stone_black_hardened"
+    },
+    "wihzo:gomoku_stone_blue": {
+        "sound": "stone",
+        "textures": "gomoku_stone_blue"
+    },
+    "wihzo:gomoku_stone_blue_hardened": {
+        "sound": "stone",
+        "textures": "gomoku_stone_blue_hardened"
+    },
+    "wihzo:gomoku_stone_gold": {
+        "sound": "stone",
+        "textures": "gomoku_stone_gold"
+    },
+    "wihzo:gomoku_stone_green": {
+        "sound": "stone",
+        "textures": "gomoku_stone_green"
+    },
+    "wihzo:gomoku_stone_green_hardened": {
+        "sound": "stone",
+        "textures": "gomoku_stone_green_hardened"
+    },
+    "wihzo:gomoku_stone_white": {
+        "sound": "stone",
+        "textures": "gomoku_stone_white"
+    },
+    "wihzo:gomoku_stone_white_hardened": {
+        "sound": "stone",
+        "textures": "gomoku_stone_white_hardened"
     }
 }

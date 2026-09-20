@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 import mod.client.extraClientApi as clientApi
 import mod.server.extraServerApi as serverApi
+import mod.client.extraClientApi as clientApi
 import config
 from mod.common.mod import Mod
 from mod_log import logger

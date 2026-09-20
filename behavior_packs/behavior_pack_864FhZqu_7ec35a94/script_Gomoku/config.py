@@ -15,8 +15,8 @@ ScriptFolderName = "script_Gomoku"
 ServerSystemName = "GomokuServerSystem"
 ServerSystemClsPath = "gomokuServerSystem.GomokuServerSystem"
 
-# Client System（比分文字板专用：TextBoard是纯客户端组件，服务端没有这套API，
-# 所以本Mod必须有一个客户端系统才能把比分立在世界里，见gomokuClientSystem）
+# Client System（一个客户端系统三件事：比分文字板——TextBoard是纯客户端
+# 组件服务端没这套API；说明书弹窗；混乱药水/时间停止的输入控制。见gomokuClientSystem）
 ClientSystemName = "GomokuClientSystem"
 ClientSystemClsPath = "gomokuClientSystem.GomokuClientSystem"
 
@@ -46,6 +46,14 @@ PlayerAttackEntityEvent = "PlayerAttackEntityEvent"
 ServerPlayerTryTouchEvent = "ServerPlayerTryTouchEvent"
 ServerChatEvent = "ServerChatEvent"
 ScriptTickServerEvent = "OnScriptTickServer"
+ScriptTickClientEvent = "OnScriptTickClient"
+# 键盘按下/弹起（客户端引擎事件；混乱药水用它维护真实WASD按键状态，
+# 见gomokuClientSystem——GetInputVector锁定中只返回回声，真实输入只能从这拿）
+OnKeyPressInGameEvent = "OnKeyPressInGame"
+# 手柄摇杆事件（客户端引擎事件，x/y为-1~1；混乱药水用它适配手柄移动，见gomokuClientSystem）
+GamepadStickClientEvent = "OnGamepadStickClientEvent"
+# 屏幕点击松手（客户端引擎事件，仅移动端/F11触发；假摇杆用它判定拖动结束）
+TapOrHoldReleaseClientEvent = "TapOrHoldReleaseClientEvent"
 PlayerDieEvent = "PlayerDieEvent"
 DelServerPlayerEvent = "DelServerPlayerEvent"
 DamageEvent = "DamageEvent"
@@ -64,6 +72,13 @@ GomokuScoreBoardEvent = "GomokuScoreBoardEvent"
 # 索要当前比分（客户端 -> 服务端）：客户端把板建好后主动请求一次，
 # 让晚进服/重连的玩家不用等到下一局结算才看到比分（见OnScoreBoardRequest）
 GomokuScoreRequestEvent = "GomokuScoreRequestEvent"
+# 请求打开说明书弹窗（服务端 -> 客户端）
+ManualOpenEvent = "GomokuManualOpenEvent"
+# 通知玩家被混乱（服务端 -> 客户端：客户端开启移动反向，见gomokuClientSystem）
+ChaosConfuseEvent = "GomokuChaosConfuseEvent"
+# 通知玩家被时间停止（服务端 -> 客户端：客户端关闭移动/跳跃/攻击输入，
+# 见gomokuClientSystem）
+TimestopFreezeEvent = "GomokuTimestopFreezeEvent"
 
 # 跨Mod事件/系统名（★改=对应Mod的config同步改，且事件名是字符串字面量广播，需全局搜）
 StartLogicModName = "StartLogicMod"
@@ -162,8 +177,8 @@ TickingAreaRadius = 4
 # 棋盘基座
 ChessBaseBlockName = "wihzo:McChess_ChessBase"
 # 已落子的棋石（颜色=落子方队伍；普通/硬化各有独立贴图——硬化版带金属包边+铆钉标记）。
-# 挖掘门控（脚本层，见OnPlayerTryDestroyBlock）：普通棋石须石镐、硬化棋石须铁镐、
-# 金棋石任何镐都挖不动（只能雷管炸）。
+# 挖掘门控（脚本层，见OnPlayerTryDestroyBlock）：普通棋石须石镐级、硬化棋石须铁镐级、
+# 金棋石任何镐都挖不动（只能雷管炸）。高级镐可采低级棋石/矿（等级见PickaxeTierDict）。
 # 盘上挖棋石耗时（destroy_time：普通6s/硬化10s）刻意长于盘外采同系矿（3s/5s）——
 # 拆对手的子比抢矿更费时，削弱互相拆家的收益。
 # 挖掉即销毁无掉落，并释放引擎对应格子
@@ -171,6 +186,10 @@ StoneBlackName = "wihzo:gomoku_stone_black"
 StoneWhiteName = "wihzo:gomoku_stone_white"
 StoneBlackHardenedName = "wihzo:gomoku_stone_black_hardened"
 StoneWhiteHardenedName = "wihzo:gomoku_stone_white_hardened"
+StoneBlueName = "wihzo:gomoku_stone_blue"
+StoneGreenName = "wihzo:gomoku_stone_green"
+StoneBlueHardenedName = "wihzo:gomoku_stone_blue_hardened"
+StoneGreenHardenedName = "wihzo:gomoku_stone_green_hardened"
 StoneGoldName = "wihzo:gomoku_stone_gold"
 # 已点燃的雷管方块（TNT外观；右键棋盘摆出，BombFuseSeconds秒后引爆，
 # 引爆前被挖掉=拆除）。名字须与netease_blocks/下JSON一致
@@ -180,7 +199,16 @@ DetonatorBlockName = "wihzo:gomoku_detonator_block"
 StoneBlockNameSet = {
     StoneBlackName, StoneWhiteName, StoneGoldName,
     StoneBlackHardenedName, StoneWhiteHardenedName,
+    StoneBlueName, StoneBlueHardenedName,
+    StoneGreenName, StoneGreenHardenedName,
 }
+# 硬化棋石集合（须铁镐级及以上挖掘，其余棋石石镐级即可——见OnPlayerTryDestroyBlock）
+HardenedStoneNameSet = {
+    StoneBlackHardenedName, StoneWhiteHardenedName,
+    StoneBlueHardenedName, StoneGreenHardenedName,
+}
+# 乱斗模式棋子归属不看方块（方块不携带归属信息），以引擎网格里的棋子值为准
+# （见HandleInkUse），故不再需要"棋石名->阵营"映射表
 
 # ---------------------- 自定义物品（名字须与行为包netease_items_beh/、
 # 资源包netease_items_res/下的JSON identifier一致） ----------------------
@@ -201,18 +229,23 @@ ReflectPotionItemName = "wihzo:reflect_potion"
 SpeedPotionItemName = "wihzo:speed_up"
 DizzyHammerItemName = "wihzo:dizzy_hammer"
 BrushItemName = "wihzo:gomoku_brush"
+BlackHoleItemName = "wihzo:blackhole"
+ChaosPotionItemName = "wihzo:chaos_poison"
+TimestopItemName = "wihzo:timestop"
+ManualItemName = "wihzo:gomoku_manual"
 
 # ---------------------- 道具表 ----------------------
 # 所有道具的统一定义，后续开发新道具只加这里，系统按 type 分派行为：
 #   name:       短显示名（播报用；物品JSON里的display_name是带说明的详细版）
 #   type:       'piece' 棋子 / 'pickaxe' 采集镐 / 'weapon' 武器 / 'ink' 转化墨水 / 'bomb' 爆炸雷管 /
 #               'boardpick' 破盘镐 / 'swap' 换位符 / 'board' 便携棋盘 / 'reflect' 反伤药水 /
-#               'speed' 加速药水 / 'brush' 笔刷
+#               'speed' 加速药水 / 'brush' 笔刷 / 'blackhole' 吞噬黑洞 / 'timestop' 时间停止 /
+#               'manual' 玩法说明书
 #   consumable: 使用一次即销毁（耐久1）
 #   piece 专用:  fromOre 产出该棋子的矿 / wildcard 万能挡子（金棋子，落子不分颜色、只挡线不获胜）/
 #               square 方阵棋子（2x2铺子：点击格为左上角，越界/已占格忽略，见HandleSquarePlace）/
 #               trap 陷阱棋子（落子外观=己方普通棋石，被挖毁时炸死范围内玩家，见DetonateTrap）
-#   pickaxe专用: mineOre 能采集的矿（各挖各的）
+#   pickaxe专用: mineOre 本职对应的矿 / tier 镐等级（高级镐也能采低级矿与普通棋石）
 #   weapon 专用: damage 攻击玩家造成的伤害（缺省用DefaultWeaponDamage）
 #   ink 专用:    无额外字段（转化目标=右键到的敌方棋石，见HandleInkUse）
 #   bomb 专用:   无额外字段（爆炸范围见BombBlastRange，右键棋盘引爆）
@@ -226,6 +259,8 @@ BrushItemName = "wihzo:gomoku_brush"
 #   reflect专用: 无额外字段（右键激活护盾：下次受到来自其他玩家的真实伤害
 #               （攻击或玩家道具）时，全额反弹给伤害来源；坠落等自然伤害/
 #               中立来源不触发、护盾保留，见HandleReflectPotionUse/OnDamage）
+#   timestop专用:无额外字段（右键冻结除使用者外的全场玩家TimestopFreezeSeconds秒，
+#               客户端关移动/跳跃/攻击输入+服务端拦挖掘/落子/道具/拾取，见HandleTimestopUse）
 ItemTable = {
 	PieceItemNormal: {
 		"name": "普通棋子", "type": "piece",
@@ -248,10 +283,12 @@ ItemTable = {
 	},
 	PickaxeStoneName: {
 		"name": "石镐", "type": "pickaxe", "consumable": True,
+		"tier": 1,
 		"mineOre": "wihzo:gomoku_ore_normal",
 	},
 	PickaxeIronName: {
 		"name": "铁镐", "type": "pickaxe", "consumable": True,
+		"tier": 2,
 		"mineOre": "wihzo:gomoku_ore_hardened",
 	},
 	PickaxeBoardName: {
@@ -286,9 +323,33 @@ ItemTable = {
 	BrushItemName: {
 		"name": "笔刷", "type": "brush", "consumable": True,
 	},
+	BlackHoleItemName: {
+		"name": "吞噬黑洞", "type": "blackhole", "consumable": True,
+		# 黑洞专用:无额外字段（右键吞噬棋盘上全部棋子，不分敌我，见HandleBlackholeUse）。
+		# 只从问号方块奖励池产出（RandomBlockPoolDict），不进ItemTierDict常规刷新环
+	},
+	ChaosPotionItemName: {
+		"name": "混乱药水", "type": "weapon", "consumable": True,
+		# chaos=控制反转武器：命中敌方玩家不造成伤害，改为ChaosPotionConfuseSeconds秒混乱
+		# ——前后左右移动反向（客户端把真实输入取负后LockInputVector，按平台分事件/轮询取输入，
+		# 见HandleChaosPotionHit与gomokuClientSystem），全屏表现用原版反胃（天旋地转、零伤害）；
+		# 不写damage（缺省会套DefaultWeaponDamage一击必杀）
+		"chaos": True,
+	},
+	TimestopItemName: {
+		"name": "时间停止", "type": "timestop", "consumable": True,
+		# timestop=全局控制道具：右键使用（UseOn/TryUse双入口），除使用者外的全场
+		# 玩家冻结TimestopFreezeSeconds秒——移动/跳跃/攻击输入在其客户端关
+		# （SetCanMove/SetCanJump/SetCanAttack，视角转动保留），挖掘/落子/道具/
+		# 拾取在服务端拦（见各事件入口的IsTimestopFrozen检查）；
+		# 只从问号方块奖励池产出（RandomBlockPoolDict），不进ItemTierDict常规刷新环
+	},
 	BoardItemName: {
 		"name": "便携棋盘", "type": "board",
 		"maxUses": 2,  # 可铺2格（★与beh JSON的minecraft:max_damage一致）
+	},
+	ManualItemName: {
+		"name": "玩法说明书", "type": "manual",
 	},
 }
 
@@ -330,9 +391,25 @@ BrushUseRadius = 6
 # 每次涂抹加多少胜场（1=白捡一局；改大就是白捡多局）
 BrushWinBonus = 1
 
+# 混乱药水：砸中敌方玩家后目标进入混乱的时长（秒）——期间前后左右移动反向
+# （客户端把真实输入取负后LockInputVector，按平台分事件/轮询取真实输入，
+# 见gomokuClientSystem），全屏表现用原版反胃（天旋地转、零伤害）。
+# 客户端反向用的是本地时钟，时长与整秒粒度的反胃表现略有出入属正常
+ChaosPotionConfuseSeconds = 10
+
+# 时间停止：右键使用后，除使用者外的全场其他玩家冻结这么久（秒）——不能移动/跳跃/
+# 攻击（其客户端关输入，见gomokuClientSystem），不能挖掘/落子/用道具/拾取（服务端
+# 拦，见各事件入口的IsTimestopFrozen检查），但可以转动视角；使用者本人行动不受影响。
+# 效果不跨局（新一局开始全体解冻）；与冻结玩家间的伤害不受影响（冻结只锁操作不锁血）
+TimestopFreezeSeconds = 5
+
 # 派生表（由道具表自动生成，勿手改）
-# 镐 -> 可采集的矿
-PickaxeOreDict = {item: cfg["mineOre"] for item, cfg in ItemTable.iteritems() if cfg["type"] == "pickaxe"}
+# 镐 -> 等级（高级镐可采低级矿与低级棋石）
+PickaxeTierDict = {item: cfg["tier"] for item, cfg in ItemTable.iteritems() if cfg["type"] == "pickaxe"}
+# 等级 -> 该等级镐的显示名（播报"须用X或更高级的镐"用）
+TierPickaxeNameDict = {cfg["tier"]: cfg["name"] for item, cfg in ItemTable.iteritems() if cfg["type"] == "pickaxe"}
+# 矿 -> 采集所需最低镐等级（金矿无条目=徒手可挖）
+OreMinTierDict = {cfg["mineOre"]: cfg["tier"] for item, cfg in ItemTable.iteritems() if cfg["type"] == "pickaxe"}
 # 矿 -> 采到的棋子物品
 OrePieceItemDict = {cfg["fromOre"]: item for item, cfg in ItemTable.iteritems() if "fromOre" in cfg}
 # 全部棋子物品名集合（背包携带上限的计数范围）
@@ -377,7 +454,8 @@ RespawnPosOffset = (0, 2, 7)
 DebugSoloAlternateSides = False
 
 # 调试聊天命令开关：True时聊天输入 #give <道具名> 可直接领取道具（#give 列出可领道具，
-# 拿便携棋盘/处决剑等做验证用）；正式对战必须关掉
+# 拿便携棋盘/处决剑等做验证用）；#chaos [秒] 直接让自己进入混乱状态（单人测视角/移速
+# 反向），#unchaos 提前解除；正式对战必须关掉
 DebugChatCommands = True
 
 # ---------------------- 资源总量维持 ----------------------
@@ -456,7 +534,7 @@ ItemTierDict = {
 	},
 	"mid": {
 		"name": "中级道具",
-		"items": [InkItemName, DetonatorItemName, PickaxeBoardName, BoardItemName, SpeedPotionItemName],
+		"items": [InkItemName, DetonatorItemName, PickaxeBoardName, BoardItemName, SpeedPotionItemName, ChaosPotionItemName],
 		"radius": (10, 25), "interval": 5,
 	},
 	"high": {
@@ -490,9 +568,14 @@ RandomBlockPoolDict = {
 	DetonatorItemName: 20,
 	BoardItemName: 10,
 	ExecutionSwordName: 10,
-	# 笔刷：唯一获取途径，极低概率（1/111 ≈ 0.9%）。白送一局胜场，故刻意做成
+	# 笔刷：唯一获取途径，极低概率（1/113 ≈ 0.9%）。白送一局胜场，故刻意做成
 	# "开一百个问号方块才见一次"的彩票；调高这个数就是调高出率
 	BrushItemName: 1,
+	# 吞噬黑洞：全盘清子的大杀器，只走问号方块（权重1=与处决剑并列最稀有档，
+	# 不进ItemTierDict常规刷新环——场上只能靠挖问号方块碰运气）
+	BlackHoleItemName: 1,
+	# 时间停止：5秒全场冻结的大杀器，同黑洞只走问号方块（权重1并列最稀有档）
+	TimestopItemName: 1,
 }
 # 刷新参数（独立于SpawnConfigList/ItemTierDict，自成一条刷新协程）：
 # radius 刷新环(内,外半径，格) / interval 刷新间隔(秒) /
@@ -562,3 +645,18 @@ ScoreBoardBackColor = (0.0, 0.0, 0.0, 0.0)
 ScoreBoardCreateDelayFrames = 30
 # 场上没有玩家时（服务端还没推过数据/空服）显示的占位行
 ScoreBoardWaitingText = "等待对局开始"
+
+# ---------------------- 玩法说明书（进服即发放，右键打开） ----------------------
+# 进服（等待阶段，DelayGiveManual延迟1秒）就发一本——等待期即可翻阅；
+# 开局/clear清空背包后补发（对局中随时能翻书）。手持右键（含对空气）打开
+# 客户端弹窗：gomokuClientSystem收到ManualOpenEvent后PushScreen弹manualUI。
+# 客户端注册（对照LimitedRespawn的UI命名方式）
+ManualUIName = "gomokuManualUI"
+ManualUIPyClsPath = "manualUI.ManualUIScreen"
+ManualUIScreenDef = "gomokuManualUI.main"
+# 假摇杆HUD（混乱药水手机/触屏模式的移动反向；布局在ui/chaosJoystickUI.json，
+# 注册在gomokuClientSystem.OnUiInitFinished，混乱开始时显示、结束隐藏）
+ChaosJoystickUIName = "chaosJoystickUI"
+ChaosJoystickUIPyClsPath = "chaosJoystickUI.ChaosJoystickScreen"
+ChaosJoystickUIScreenDef = "chaosJoystickUI.main"
+# 教程文案 ManualTextList 已迁至 messageConfig.py（玩家可见文案统一管理）
