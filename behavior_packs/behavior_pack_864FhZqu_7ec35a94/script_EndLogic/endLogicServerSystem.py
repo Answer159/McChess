@@ -50,7 +50,8 @@ class EndLogicServerSystem(ServerSystem):
 		# 系列赛（整场多局，如五局三胜）配置与状态
 		# 夺冠所需胜场数
 		self.matchWinLimit = config.matchWinLimit
-		# 各队系列赛胜场数 {队名: 胜场}，队名与TeamMod组件编辑器里配置的一致
+		# 各方系列赛胜场数 {记分名: 胜场}。本图乱斗玩法记分名=玩家名（GomokuMod
+		# 结算时传入）；其他地图沿用TeamMod队名（见SettleAndRecord的反查路径）
 		self.seriesWinDict = {}
 		# 总冠军已产生标记（ReStartGame里消费：走整场重置而非系列赛续局）
 		self.matchOverFlag = False
@@ -269,7 +270,7 @@ class EndLogicServerSystem(ServerSystem):
 	# 与定时到时结算走同一套结束流程：作废定时器、记系列赛分、通知胜利、按配置清背包、重启下一轮。
 	# victorName 播报用胜方名；victoryText 可传完整播报文案（缺省"§6xx§f获得胜利"）；
 	# victoryPlayerIdList 可选的获胜玩家列表（供GetVictoryPlayerList查询）；
-	# victoryTeamName 系列赛记分用的真实队名（缺省时按胜利玩家列表反查；平局均传None）
+	# victoryTeamName 系列赛记分用的记分名（本图乱斗=胜者玩家名；缺省时按胜利玩家列表反查；平局均传None）
 	def ExternalSettleGame(self, victorName, victoryText=None, victoryPlayerIdList=None, victoryTeamName=None):
 		if self.endGameFlag:
 			return  # 本局已结算，防重复触发
@@ -340,13 +341,15 @@ class EndLogicServerSystem(ServerSystem):
 			CoroutineMgr.StartCoroutine(self.ReStartGame())
 
 	# 构造系列赛比分事件数据（记分牌文案在服务端统一生成，客户端只负责展示）
+	# 本图是乱斗玩法（见script_Gomoku）：每个玩家自成一方，系列赛胜场按玩家名记
+	# （GomokuMod结算时把胜者玩家名当"队名"传入），记分牌行也按玩家名列——
+	# 不再取TeamMod的queueNameDict（那显示的是"火焰使者"这类模板队名）
 	def BuildSeriesScoreEvent(self):
 		scoreList = []
-		teamSystem = self.teamServerSystem or serverApi.GetSystem(config.TeamModName, config.TeamServerSystemName)
-		if teamSystem:
-			queueNameDict = teamSystem.GetQueueNameInfo()["queueNameDict"]
-			for teamName in queueNameDict:
-				scoreList.append([teamName, self.seriesWinDict.get(teamName, 0)])
+		for playerId in self.players:
+			playerName = self.GetPlayerName(playerId)
+			if playerName:
+				scoreList.append([playerName, self.seriesWinDict.get(playerName, 0)])
 		if len(scoreList) == 2:
 			scoreText = "{0} {1} : {2} {3}".format(scoreList[0][0], scoreList[0][1], scoreList[1][1], scoreList[1][0])
 		else:
@@ -357,6 +360,15 @@ class EndLogicServerSystem(ServerSystem):
 		data["winLimit"] = self.matchWinLimit
 		data["text"] = scoreText
 		return data
+
+	# 取玩家显示名（记分牌/记分用）；API异常返回None（该玩家不显示行）
+	def GetPlayerName(self, playerId):
+		try:
+			nameComp = serverApi.GetEngineCompFactory().CreateName(playerId)
+			return nameComp.GetName() if nameComp else None
+		except Exception as e:
+			logger.warning("GetPlayerName failed: {0}".format(e))
+			return None
 
 	# 广播系列赛当前比分（局结算/夺冠清零后各调用一次，驱动客户端记分牌）
 	def BroadcastSeriesScore(self):

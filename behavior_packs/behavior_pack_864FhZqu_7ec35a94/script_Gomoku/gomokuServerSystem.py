@@ -2395,10 +2395,12 @@ class GomokuServerSystem(ServerSystem):
 		# 胜负与平局都要真正结算本局（平局之前没通知EndLogic，会导致满盘后僵到超时）
 		endLogicServerSystem = serverApi.GetSystem(config.EndLogicModName, config.EndLogicServerSystemName)
 		if endLogicServerSystem:
-			# 系列赛记分需要真实队名：胜者在场时用playerId列表让EndLogic自己反查队伍
-			# （乱斗下队伍只是基础设施，胜负按玩家记）；平局/离场/调试模式传None不记胜场
+			# 系列赛记分按玩家记（乱斗每人自成一方，"队名"就是玩家名）：
+			# 胜者在场时直接把玩家名传给EndLogic当记分名，不让它反查TeamMod的
+			# 队伍名（那会记成"火焰使者"这种模板队名）；平局/离场/调试模式
+			# 传None不记胜场
 			victoryPlayerIdList = [winnerId] if winnerId is not None else None
-			endLogicServerSystem.ExternalSettleGame(sideText, victoryText, victoryPlayerIdList, None)
+			endLogicServerSystem.ExternalSettleGame(sideText, victoryText, victoryPlayerIdList, winnerName)
 		else:
 			self.Msg('game_no_endlogic')
 
