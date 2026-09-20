@@ -189,8 +189,8 @@ ChessBaseBlockName = "wihzo:McChess_ChessBase"
 # 已落子的棋石（颜色=落子方队伍；普通/硬化各有独立贴图——硬化版带金属包边+铆钉标记）。
 # 挖掘门控（脚本层，见OnPlayerTryDestroyBlock）：普通棋石须石镐级、硬化棋石须铁镐级、
 # 金棋石任何镐都挖不动（只能雷管炸）。高级镐可采低级棋石/矿（等级见PickaxeTierDict）。
-# 盘上挖棋石耗时（destroy_time：普通6s/硬化10s）刻意长于盘外采同系矿（3s/5s）——
-# 拆对手的子比抢矿更费时，削弱互相拆家的收益。
+# 盘上挖棋石耗时（destroy_time：普通3s/硬化5s）与盘外采同系矿一致（同3s/5s）——
+# 棋子改为只产自挖矿后，拆对手的子不再额外收"拆家税"（原为6s/10s刻意加长）。
 # 挖掉即销毁无掉落，并释放引擎对应格子
 StoneBlackName = "wihzo:gomoku_stone_black"
 StoneWhiteName = "wihzo:gomoku_stone_white"
@@ -498,11 +498,11 @@ SpawnMaxCountDict = {
 	"wihzo:gomoku_ore_normal": 12,
 	# 硬化矿：中环合计
 	"wihzo:gomoku_ore_hardened": 6,
-	# 金矿：外环守卫区，极稀少
+	# 金矿：中环紧贴硬化矿外侧，稀少（普通/硬化棋子物品已不再直刷，
+	# 棋子全部产自挖矿——见SpawnConfigList的说明）
 	"wihzo:gomoku_ore_gold": 2,
-	# 直刷棋子物品（道具不在此表——道具走分级共用上限，见ItemTierDict）
-	PieceItemNormal: 5,
-	PieceItemHardened: 3,
+	# 直刷的特殊棋子物品（普通/硬化棋子物品不再直刷；道具不在此表——道具走
+	# 分级共用上限，见ItemTierDict）
 	# 方阵棋子：一次铺四子的节奏型大件，地图上至多1枚
 	PieceItemSquare: 1,
 	# 陷阱棋子：阴人专用，地图上至多1枚
@@ -532,15 +532,14 @@ SpawnConfigList = [
 	{"type": "ore", "blockName": "wihzo:gomoku_ore_normal", "radius": (8, 14), "angleRange": (180, 360), "interval": 4},
 	# 硬化棋子矿：中环
 	{"type": "ore", "blockName": "wihzo:gomoku_ore_hardened", "radius": (14, 22), "angleRange": (0, 360), "interval": 15},
-	# 金棋子矿：外环守卫区（跑一趟=离开战场很久），徒手可挖
-	{"type": "ore", "blockName": "wihzo:gomoku_ore_gold", "radius": (25, 35), "angleRange": (0, 360), "interval": 60},
-	# 普通棋子物品：近环高频直刷
-	{"type": "item", "itemName": PieceItemNormal, "radius": (5, 9), "angleRange": (0, 360), "interval": 3},
-	# 硬化棋子物品：中环直接掉落
-	{"type": "item", "itemName": PieceItemHardened, "radius": (9, 14), "angleRange": (0, 360), "interval": 15},
-	# 方阵棋子：中环偏外，低频直刷（一次铺四子，节奏价值极高故稀有）
+	# 金棋子矿：中环硬化矿带内（原在外环25~35格，刻意拉近——金子是万能挡子，
+	# 太远没人跑；混在硬化矿里挖着挖着捡到金子也算小惊喜），徒手可挖
+	{"type": "ore", "blockName": "wihzo:gomoku_ore_gold", "radius": (16, 20), "angleRange": (0, 360), "interval": 60},
+	# ★棋子物品不再直刷（普通/硬化都只能挖对应矿获得）：地上白捡的棋子会让
+	# 镐子失去存在意义——想拿子就得先从低级道具环搞到镐
+	# 方阵棋子：中环偏外，低频直刷（一次铺四子，节奏价值极高故稀有；无对应矿，只能直刷）
 	{"type": "item", "itemName": PieceItemSquare, "radius": (14, 20), "angleRange": (0, 360), "interval": 45},
-	# 陷阱棋子：中环偏外，极低频直刷（存在感越低越有效）
+	# 陷阱棋子：中环偏外，极低频直刷（存在感越低越有效；无对应矿，只能直刷）
 	{"type": "item", "itemName": PieceItemTrap, "radius": (14, 20), "angleRange": (0, 360), "interval": 60},
 	# 道具（镐/剑/墨水/雷管）不走本表——按等级走ItemTierDict的分级刷新
 ]
@@ -587,15 +586,16 @@ RandomBlockName = "wihzo:gomoku_block_random"
 # 随机奖励池（道具名 -> 权重）：不含棋子——避开棋子携带上限（MaxCarriedPieces）
 # 满时抽到棋子无处安放的边界；权重越大越常出，等权就全写一样的数。
 # 权重是相对值（抽取时按合计归一化，见DrawRandomBlockReward），故常规道具统一
-# 放大到十位数，好让笔刷这种"极低概率"的东西能用权重1表达出约1%的档位
+# 放大到十位数，好让笔刷这种"极低概率"的东西能用权重1表达出约1%的档位。
+# 石镐刻意不在池里（权重=0）：镐子走低级道具环常规刷新，问号方块再送会让
+# 白捡的镐冲淡"挖矿换子"的动机（玩家要靠环里刷的镐去挖矿）
 RandomBlockPoolDict = {
-	PickaxeStoneName: 30,
 	PickaxeIronName: 20,
 	InkItemName: 20,
 	DetonatorItemName: 20,
 	BoardItemName: 10,
 	ExecutionSwordName: 10,
-	# 笔刷：唯一获取途径，极低概率（1/113 ≈ 0.9%）。白送一局胜场，故刻意做成
+	# 笔刷：唯一获取途径，极低概率（1/83 ≈ 1.2%）。白送一局胜场，故刻意做成
 	# "开一百个问号方块才见一次"的彩票；调高这个数就是调高出率
 	BrushItemName: 1,
 	# 吞噬黑洞：全盘清子的大杀器，只走问号方块（权重1=与处决剑并列最稀有档，
