@@ -110,10 +110,14 @@ SeriesBoardInitText = "等待系列赛开始"
 # Gomoku行距0.6）留出空行，x/z取锚点方块中心+0.5与Gomoku标题对齐。锚点贴
 # 地所以整列都抬高了，别只改本牌不改Gomoku那边（一起同步）。编辑器里挪
 # TextAnchor后此处要与script_Gomoku/config.py的ScoreBoardAnchor一起改。
-scoreboardPos = (1868.5, 69.2, 589.5)
-scoreboardScale = (2.0, 2.0)
+scoreboardPos = (1868.5, 67, 587)
+scoreboardScale = (8.0, 8.0)
 # 记分牌文字颜色（RGBA 0-1）
 SeriesBoardTextColor = (1.0, 1.0, 1.0, 1.0)
 # 是否始终面向镜头：True = 玩家从任何方向走过来都读得到字（Gomoku文字板
 # 同款配置）。固定朝向从背面看是空白板，森林里绕到背面的概率不低
-SeriesBoardFaceCamera = True
+SeriesBoardFaceCamera = False
+# 固定朝向（SeriesBoardFaceCamera=False）时的板身旋转（欧拉角，度）。
+# 板默认背对棋盘/来客方向，绕Y轴转180度把字面翻过来。★faceCamera=True时
+# SetBoardRot会被引擎忽略（官方文档），改了不生效属正常
+SeriesBoardRot = (0, 180, 0)

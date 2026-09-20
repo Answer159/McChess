@@ -47,7 +47,7 @@ class EndLogicClientSystem(ClientSystem):
 
 	# ---------- 系列赛记分牌（官方TextBoard客户端组件，文字随服务端广播更新） ----------
 
-	# 创建场地记分牌：透明底、白字、始终面向镜头（森林里从任何方向都读得到）
+	# 创建场地记分牌：透明底、白字；faceCamera=False时按config把板身转个方向
 	def DelayCreateSeriesBoard(self):
 		yield -30
 		comp = clientApi.GetEngineCompFactory().CreateTextBoard(clientApi.GetLevelId())
@@ -61,6 +61,10 @@ class EndLogicClientSystem(ClientSystem):
 			self.seriesBoardId = boardId
 			comp.SetBoardScale(boardId, tuple(config.scoreboardScale))
 			comp.SetBoardPos(boardId, tuple(config.scoreboardPos))
+			# 固定朝向的板默认背对棋盘方向，转180度把字面翻过来
+			# （faceCamera=True时引擎会忽略SetBoardRot，这里不白调）
+			if not config.SeriesBoardFaceCamera:
+				comp.SetBoardRot(boardId, tuple(config.SeriesBoardRot))
 			logger.info("series scoreboard created at %s", config.scoreboardPos)
 		else:
 			logger.error("create series scoreboard failed!")
