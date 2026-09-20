@@ -99,7 +99,7 @@ TeamServerSystemName = "TeamServerSystem"
 #             踩到路外的格子 -> 变岩浆+掉血+弹回上一个实心格（参数见
 #             gameModes/trapModeConfig.py：陷阱区半边长/安全圈/路径条数/岩浆时长…）
 # ★改完重进地图生效；写成没注册的名字会记警告并退回"classic"
-GameMode = "trap"
+GameMode = "classic"
 
 # ---------------------- 棋盘 ----------------------
 # 棋盘中心（唯一事实来源）。编辑器里移动棋盘后，把Anchor新坐标同步到这里即可。
@@ -115,13 +115,15 @@ BoardSize = 9
 
 # ---------------------- PvPvP多人对战（乱斗） ----------------------
 # 不做黑白两队对抗：每个玩家自成一方（引擎里每人一个棋子值1~FFAMaxPlayers，
-# 先连五子的"那个玩家"获胜；棋石外观暂统一用黑棋石，颜色区分以后再做）。
+# 先连五子的"那个玩家"获胜）。棋石外观按棋子值上色（见StoneNormalNameByValue）。
 # 棋盘随人数扩容：2人局=BoardSize基础边长，每多1名玩家边长+2
-# （3人11、4人13、5人15、6人17、7人19），开局按在线人数计算。
-# FFAMaxPlayers：乱斗最多支持的玩家数（引擎棋子值1~7，超出者本局旁观，
-# 下一局开始时重新分配）。★同时改需同步：gomokuServerSystem的GOMOKU_GOLD
-# （须避开1~FFAMaxPlayers的取值区间）
-FFAMaxPlayers = 7
+# （3人11、4人13），开局按在线人数计算。
+# FFAMaxPlayers：乱斗最多支持的玩家数（引擎棋子值1~4=黑白蓝绿四色棋石，
+# StartLogic里超过这个人数直接不让开局，见startLogicServerSystem.CheckState）。
+# ★同时改需同步：gomokuServerSystem的GOMOKU_GOLD（须避开1~FFAMaxPlayers的
+# 取值区间）、StoneNormalNameByValue/StoneHardenedNameByValue/PlayerColorDict
+# 的条数（都按1~FFAMaxPlayers排）
+FFAMaxPlayers = 4
 BoardSizePerExtraPlayer = 2
 
 # ---------------------- 棋盘随机化 ----------------------
@@ -191,11 +193,28 @@ StoneGreenName = "wihzo:gomoku_stone_green"
 StoneBlueHardenedName = "wihzo:gomoku_stone_blue_hardened"
 StoneGreenHardenedName = "wihzo:gomoku_stone_green_hardened"
 StoneGoldName = "wihzo:gomoku_stone_gold"
+# 棋子值 -> 棋石方块名（乱斗外观按玩家上色：1黑、2白、3蓝、4绿）。
+# 普通与硬化各一张表（硬化版外观同色带金属包边+铆钉标记）。
+# 落子/方阵/墨水转化都按落子玩家的棋子值查表取方块（见GetStoneNameForValue）；
+# 值越界/未在表里时兜底黑棋石。条数须覆盖1~FFAMaxPlayers，改人数上限时同步
+StoneNormalNameByValue = {
+	1: StoneBlackName,
+	2: StoneWhiteName,
+	3: StoneBlueName,
+	4: StoneGreenName,
+}
+StoneHardenedNameByValue = {
+	1: StoneBlackHardenedName,
+	2: StoneWhiteHardenedName,
+	3: StoneBlueHardenedName,
+	4: StoneGreenHardenedName,
+}
 # 已点燃的雷管方块（TNT外观；右键棋盘摆出，BombFuseSeconds秒后引爆，
 # 引爆前被挖掉=拆除）。名字须与netease_blocks/下JSON一致
 DetonatorBlockName = "wihzo:gomoku_detonator_block"
-# 棋石名集合（挖掘时按棋盘格处理；金棋石单独判）。乱斗模式棋石外观统一用黑棋石，
-# 棋子归属不再看方块（方块不携带归属信息），以引擎网格里的棋子值为准（见HandleInkUse）
+# 棋石名集合（挖掘时按棋盘格处理；金棋石单独判）。乱斗棋石按棋子值上色
+# （黑白蓝绿四色+各自的硬化款，见StoneNormalNameByValue），但归属的事实来源
+# 仍是引擎网格里的棋子值——外观颜色只是展示，不参与判定（见HandleInkUse）
 StoneBlockNameSet = {
     StoneBlackName, StoneWhiteName, StoneGoldName,
     StoneBlackHardenedName, StoneWhiteHardenedName,
@@ -593,20 +612,19 @@ WinRowLength = 5
 
 # ---------------------- 玩家颜色表 ----------------------
 # 键 = 本局逻辑棋子值（1~FFAMaxPlayers，开局按人头分配，见AssignPieceValues）——
-# 也就是"这一局你是几号玩家"。每人一色：
+# 也就是"这一局你是几号玩家"。每人一色，且与棋石方块同色（1黑2白3蓝4绿，
+# 见StoneNormalNameByValue）：
 #   name  色名（比分行/播报里带一个中文色名，小字看不清颜色时也认得出人）
 #   code  聊天框§颜色码（聊天播报用；文字板不吃§码，颜色走rgba）
 #   rgba  文字板颜色（RGBA 0~1，引擎TextBoard只收这个格式）
 # ★条数须 >= FFAMaxPlayers，否则超出的玩家退回PlayerColorFallback（白）。
-# 这张表同时是以后做"棋石按玩家上色"的现成底表（届时再加贴图/方块名字段）
+# 黑色在文字板上用深灰（纯黑字看不清）、聊天用§8同理；白色与兜底色相同是
+# 已知取舍（没分到值的旁观者也是白——反正他本局没有棋子）
 PlayerColorDict = {
-	1: {"name": "红", "code": "§c", "rgba": (1.00, 0.33, 0.33, 1.0)},
-	2: {"name": "蓝", "code": "§9", "rgba": (0.33, 0.55, 1.00, 1.0)},
-	3: {"name": "黄", "code": "§e", "rgba": (1.00, 0.93, 0.35, 1.0)},
+	1: {"name": "黑", "code": "§8", "rgba": (0.35, 0.35, 0.35, 1.0)},
+	2: {"name": "白", "code": "§f", "rgba": (0.95, 0.95, 0.95, 1.0)},
+	3: {"name": "蓝", "code": "§9", "rgba": (0.33, 0.55, 1.00, 1.0)},
 	4: {"name": "绿", "code": "§a", "rgba": (0.40, 0.90, 0.40, 1.0)},
-	5: {"name": "紫", "code": "§d", "rgba": (0.85, 0.45, 0.95, 1.0)},
-	6: {"name": "橙", "code": "§6", "rgba": (1.00, 0.65, 0.20, 1.0)},
-	7: {"name": "青", "code": "§b", "rgba": (0.45, 0.90, 0.90, 1.0)},
 }
 # 没有本局棋子值时（等待阶段/满员旁观）的兜底颜色
 PlayerColorFallback = {"name": "白", "code": "§f", "rgba": (1.0, 1.0, 1.0, 1.0)}

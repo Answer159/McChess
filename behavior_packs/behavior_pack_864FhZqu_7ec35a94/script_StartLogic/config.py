@@ -76,6 +76,10 @@ for _, data in editorConfig.dataDict.items():
 
 # 单人测试：最低开局人数改为1（编辑器组件里仍为2，以这里的手写覆盖为准）
 gameMinPlayerNum = 1
+# 最高开局玩家人数：乱斗每人一色棋石（黑/白/蓝/绿，见script_Gomoku的
+# FFAMaxPlayers与StoneNormalNameByValue），颜色只有4种，超过4人不让开局
+# （等待阶段/确认/倒计时中人数回落到上限内才继续，见CheckState）
+gameMaxPlayerNum = 4
 
 
 startPoint = waitArea['startPoint']

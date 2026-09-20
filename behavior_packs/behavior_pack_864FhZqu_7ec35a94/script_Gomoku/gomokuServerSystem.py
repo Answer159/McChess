@@ -18,7 +18,7 @@ from modCommon.gomokuCore.board import (
 ServerSystem = serverApi.GetServerSystemCls()
 
 # 金棋子（万能挡子）在引擎中的棋子值：乱斗模式下1~config.FFAMaxPlayers
-# （默认7）是玩家的逻辑棋子值（见AssignPieceValues），金棋子取区间外的值——
+# （默认4）是玩家的逻辑棋子值（见AssignPieceValues），金棋子取区间外的值——
 # 引擎按棋子值判五连，第三方值占格且不与任何玩家匹配，天然阻断所有人连线
 # （见PlaceInEngine）。
 GOMOKU_GOLD = 8
@@ -286,7 +286,7 @@ class GomokuServerSystem(ServerSystem):
 		"""新一轮开始：按在线人数重算盘边/分配乱斗棋子值，确保棋盘已铺（等待期
 		失败在此重试），清盘并启动资源刷新"""
 		logger.info("[Gomoku] 新一轮开始，重置棋盘")
-		# 乱斗：按本局在线人数扩缩棋盘（2人9、3人11…7人19），并给每人分配逻辑棋子值
+		# 乱斗：按本局在线人数扩缩棋盘（2人9、3人11、4人13，封顶FFAMaxPlayers），并给每人分配逻辑棋子值
 		playerCount = len(serverApi.GetPlayerList())
 		self.boardSize = self.ComputeRoundBoardSize(playerCount)
 		self.AssignPieceValues()
@@ -355,8 +355,8 @@ class GomokuServerSystem(ServerSystem):
 
 	def AssignPieceValues(self):
 		"""开局给在场玩家分配本局逻辑棋子值（1~FFAMaxPlayers）：引擎按棋子值判
-		五连，同值才算同一方的连线——这就是乱斗模式"逻辑上区分棋子"的全部实现
-		（视觉上棋石外观暂不区分）。按playerId排序分配保证稳定；超出上限的玩家
+		五连，同值才算同一方的连线，棋石外观也按值上色（黑白蓝绿，见
+		GetStoneNameForValue）。按playerId排序分配保证稳定；超出上限的玩家
 		不分配（本局旁观，落子/墨水/铺格会被拦）。每局整体重置，不沿用上局"""
 		self.playerPieceValueDict = {}
 		self.assignedPieceValues = set()
@@ -390,6 +390,15 @@ class GomokuServerSystem(ServerSystem):
 		"""玩家的本局逻辑棋子值；未分配（等待阶段/满员旁观/离开后）返回None。
 		乱斗模式下这是"你是谁"的唯一事实来源，落子/墨水/铺格的资格判定都用它"""
 		return self.playerPieceValueDict.get(playerId)
+
+	def GetStoneNameForValue(self, pieceValue, hardened=False):
+		"""按棋子值取该玩家的棋石方块（1黑/2白/3蓝/4绿，见config的
+		StoneNormalNameByValue/StoneHardenedNameByValue；hardened取同色硬化款）。
+		值越界/未分配兜底黑棋石（硬化兜底黑硬化款）——归属的事实来源仍是引擎
+		网格里的棋子值，外观只是展示；金棋子另有StoneGoldName不走这里"""
+		table = config.StoneHardenedNameByValue if hardened else config.StoneNormalNameByValue
+		fallback = config.StoneBlackHardenedName if hardened else config.StoneBlackName
+		return table.get(pieceValue) or fallback
 
 	def GetPieceOwnerName(self, pieceValue):
 		"""按棋子值反查持有玩家的显示名（播报用：墨水转化的victim归属等）；
@@ -1124,9 +1133,10 @@ class GomokuServerSystem(ServerSystem):
 			# 空手使用事件），节流防刷屏
 			self.MsgThrottled(playerId, 'placeHint', 'place_hold_piece')
 			return
-		# 消耗棋子，按落子玩家的棋子值入引擎（乱斗模式棋石外观统一用黑棋石，
-		# 归属只存在引擎值里；金棋子为万能挡子，不分归属）；
-		# 硬化棋子落成硬化棋石——外观与普通棋石同款，但挖掘耗时更长（destroy_time更大）
+		# 消耗棋子，按落子玩家的棋子值入引擎并放对应颜色的棋石（乱斗外观
+		# 按玩家上色：1黑2白3蓝4绿，见GetStoneNameForValue；金棋子为万能
+		# 挡子，不分归属固定金棋石）；硬化棋子落成同色硬化棋石——挖掘更久
+		# （destroy_time更大），外观同色带金属包边
 		if not self.ConsumeCarriedItem(playerId):
 			return
 		hardened = bool(itemCfg.get('hardened'))
@@ -1134,7 +1144,7 @@ class GomokuServerSystem(ServerSystem):
 			stoneName = config.StoneGoldName
 			player = GOMOKU_GOLD
 		else:
-			stoneName = config.StoneBlackHardenedName if hardened else config.StoneBlackName
+			stoneName = self.GetStoneNameForValue(pieceValue, hardened)
 			player = pieceValue
 		stonePos = self.GridToWorld(bx, by)
 		self.RunCommand('/setblock {} {} {} {}'.format(stonePos[0], stonePos[1], stonePos[2], stoneName))
@@ -1152,7 +1162,7 @@ class GomokuServerSystem(ServerSystem):
 	def HandleSquarePlace(self, playerId, bx, by, pieceValue):
 		"""方阵棋子落子：以点击格为2x2左上角，向 +X/+Z 方向铺四枚己方普通棋子。
 		越界或已占的格子忽略，只落合法格；四格全不合法则不消耗、播报原因。
-		棋子归属=落子玩家的棋子值（乱斗模式棋石外观统一，归属只在引擎值里），
+		棋子归属=落子玩家的棋子值（棋石按棋子值上色，见GetStoneNameForValue），
 		消耗一次即铺下全部合法格；中途成五/满盘立即结算，剩余格子不再落。
 		方阵棋子占用MaxCarriedPieces一个名额"""
 		if pieceValue is None and not config.DebugSoloAlternateSides:
@@ -1175,7 +1185,7 @@ class GomokuServerSystem(ServerSystem):
 			return
 		if not self.ConsumeCarriedItem(playerId):
 			return
-		stoneName, player = config.StoneBlackName, pieceValue
+		stoneName, player = self.GetStoneNameForValue(pieceValue), pieceValue
 		placed = 0
 		for cx, cy in legalCells:
 			stonePos = self.GridToWorld(cx, cy)
@@ -1228,12 +1238,13 @@ class GomokuServerSystem(ServerSystem):
 
 	def HandleInkUse(self, playerId, pos):
 		"""手持墨水右键棋盘上的棋石 -> 转化为己方（墨水耐久1，用一次即碎）。
-		乱斗模式棋石外观不区分归属，归属的事实来源是引擎网格里的棋子值：
-		非己方值即可转化（持有者是谁看GetPieceOwnerName，含已离场者的子）；
-		金棋子（GOMOKU_GOLD）无归属不可转化，己方棋石无需转化。
-		硬化属性保留（墨水只换归属不换材质）；引擎侧先删旧子再落新子（同格改值），
-		转化补齐五连同 normal 落子一样判胜。陷阱雷跟着格子走：被转化的陷阱棋石
-		换主后仍是陷阱，挖它照样炸（trapCells不因转化而清）"""
+		棋石外观按棋子值上色（1黑2白3蓝4绿），转化后方块换成使用者的颜色，
+		但归属的事实来源仍是引擎网格里的棋子值：非己方值即可转化（持有者
+		是谁看GetPieceOwnerName，含已离场者的子）；金棋子（GOMOKU_GOLD）无
+		归属不可转化，己方棋石无需转化。硬化属性保留（墨水只换归属/颜色不换
+		材质）；引擎侧先删旧子再落新子（同格改值），转化补齐五连同 normal
+		落子一样判胜。陷阱雷跟着格子走：被转化的陷阱棋石换主后仍是陷阱，
+		挖它照样炸（trapCells不因转化而清）"""
 		if not self.IsStoneSlot(pos):
 			return  # 点击的不是任何棋盘格的落子层（与HandleStoneBreak同判定）
 		if self.board.state != STATE_PLAYING:
@@ -1259,8 +1270,8 @@ class GomokuServerSystem(ServerSystem):
 		if not self.ConsumeCarriedItem(playerId):
 			return
 		# 己方棋石（敌方硬化棋石转化后保留硬化：挖掘更久的属性跟着格子走）
-		hardened = blockName == config.StoneBlackHardenedName
-		stoneName = config.StoneBlackHardenedName if hardened else config.StoneBlackName
+		hardened = blockName in config.HardenedStoneNameSet
+		stoneName = self.GetStoneNameForValue(pieceValue, hardened)
 		self.RunCommand('/setblock {} {} {} {}'.format(pos[0], pos[1], pos[2], stoneName))
 		# 引擎同步：remove+place（remove失败=计数脱同步，place会自愈补上该格）
 		self.board.remove(bx, by)

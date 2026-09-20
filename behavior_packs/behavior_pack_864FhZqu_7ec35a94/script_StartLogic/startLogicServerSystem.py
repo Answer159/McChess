@@ -18,6 +18,10 @@ class StartLogicServerSystem(ServerSystem):
 		self.startGameWaitPos = tuple(config.startGameWaitPos)
 		# 最低开局玩家人数
 		self.gameMinPlayerNum = config.gameMinPlayerNum
+		# 最高开局玩家人数（乱斗棋石只有4色，超过不让开局，见CheckState）
+		self.gameMaxPlayerNum = config.gameMaxPlayerNum
+		# 人数超上限的上升沿播报标记（只在刚超过时/say一次，不刷屏）
+		self.overMaxAnnounced = False
 		# 是否自动开始游戏标志
 		self.autoStartFlag = config.autoStartFlag
 		# 是否清除掉落物标志
@@ -59,7 +63,9 @@ class StartLogicServerSystem(ServerSystem):
 		while lastState != self.state:
 			lastState = self.state
 			if self.state == 0:  # 等待阶段
-				if len(self.playerAliveDict) >= self.gameMinPlayerNum:
+				# 人数超上限同样不开局：乱斗棋石只有4色（黑/白/蓝/绿），第5人加入
+				# 会让每个人都不知道自己是什么颜色，直接卡在等待阶段并/say提示
+				if self.gameMinPlayerNum <= len(self.playerAliveDict) <= self.gameMaxPlayerNum:
 					self.state = 1
 					self.playerEnsureDict = {}
 					self.startNum = len(self.players)
@@ -68,7 +74,10 @@ class StartLogicServerSystem(ServerSystem):
 				if self.autoStartFlag:  # 自动确认
 					for k in self.playerAliveDict.keys():
 						self.playerEnsureDict[k] = True
-				if len(self.playerAliveDict) < self.startNum:  # 人突然不够了
+				if len(self.playerAliveDict) > self.gameMaxPlayerNum:  # 人超上限了
+					self.state = 0
+					self.CheckState()
+				elif len(self.playerAliveDict) < self.startNum:  # 人突然不够了
 					self.state = 0
 					self.CheckState()
 				elif len(self.playerEnsureDict) >= self.startNum:  # 确认人数够了
@@ -83,10 +92,20 @@ class StartLogicServerSystem(ServerSystem):
 						TeamServerSystem.ShowTeamUI(True)
 					self.StartGame()
 				else:
-					if len(self.playerAliveDict) < self.startNum or len(self.playerEnsureDict) < self.startNum:  # 人突然不够了
+					if len(self.playerAliveDict) < self.startNum or len(self.playerEnsureDict) < self.startNum or len(self.playerAliveDict) > self.gameMaxPlayerNum:  # 人不够了或超上限了
 						self.state = 0
 			if self.state == 3:  # 游戏中
 				pass
+		# 人数超上限的播报（上升沿只说一次，人退回上限内自动复位允许再次触发）
+		if len(self.playerAliveDict) > self.gameMaxPlayerNum:
+			if not self.overMaxAnnounced:
+				self.overMaxAnnounced = True
+				commandComp = self.CreateComponent(self.levelId, config.Minecraft, config.CommandComponent)
+				commandComp.command = "/say §c人数超过{}人上限：本图乱斗每人一色棋石（黑白蓝绿），最多{}人，请多余的玩家退出后再开局".format(
+					self.gameMaxPlayerNum, self.gameMaxPlayerNum)
+				self.NeedsUpdate(commandComp)
+		else:
+			self.overMaxAnnounced = False
 
 	def getPlayerEnsure(self):
 		return self.playerEnsureDict
