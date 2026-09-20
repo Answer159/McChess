@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 import mod.client.extraClientApi as clientApi
-import config
+import messageConfig
 from mod_log import logger
 
 ViewBinder = clientApi.GetViewBinderCls()
@@ -9,11 +9,11 @@ ScreenNode = clientApi.GetScreenNodeCls()
 
 
 class ManualUIScreen(ScreenNode):
-	"""说明书窗口：分页教程文本（config.ManualTextList）。
+	"""说明书窗口：分页教程文本（messageConfig.ManualTextList）。
 
 	控件路径镜像ui/gomokuManualUI.json的manualPanel子树；
 	翻页/关闭按钮的$pressed_button_name绑定到下面的回调方法。
-	文案改动只须改config.ManualTextList，本文件与UI JSON不用动"""
+	文案改动只须改messageConfig.ManualTextList，本文件与UI JSON不用动"""
 
 	def __init__(self, namespace, name, param):
 		ScreenNode.__init__(self, namespace, name, param)
@@ -26,7 +26,7 @@ class ManualUIScreen(ScreenNode):
 
 	def ShowPage(self, index):
 		"""渲染第index页：正文/页码 + 首末页隐藏对应翻页按钮"""
-		pages = config.ManualTextList
+		pages = messageConfig.ManualTextList
 		if not pages:
 			return
 		self.pageIndex = max(0, min(index, len(pages) - 1))

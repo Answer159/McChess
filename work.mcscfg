@@ -5,7 +5,7 @@
   "Versions": [],
   "JavaType": 8,
   "Name": "MCChess",
-  "UpdateTime": "2026-09-18T21:32:34.321845+08:00",
+  "UpdateTime": "2026-09-20T11:12:59.0619303+08:00",
   "IconName": null,
   "Md5": null,
   "CloudMd5": null,
@@ -55,7 +55,7 @@
   "TestRenderEngine": 0,
   "SelectComponents": [
     "54de491ed0b74bdbaea4872bd202e3df",
-    "60bae07ef74a45b491eea68705d08cb1"
+    "0f6f19f559044777b4e99616bafe82de"
   ],
   "isSlim": false,
   "UseLegacyEditor": null,
