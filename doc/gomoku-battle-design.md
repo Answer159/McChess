@@ -150,6 +150,8 @@
 | 项 | 规则 |
 |---|---|
 | 复活 | **无限复活**：死亡不弹原版界面（`immediate_respawn` 游戏规则），自动重生无需点击。引擎复活点由脚本设到棋盘外沿（`RespawnPosOffset`，常驻加载区内）——世界出生点在未加载区块，重生会卡死 |
+| 血量 | **每局开始全体回满**（`OnRoundStart` 按各自 `GetAttrMaxValue(HEALTH)` 设回，只改当前值不动默认值）：上一局踩雷/互殴挂的彩不带到下一局 |
+| 饥饿 | **整场屏蔽**（`script_World` 进图时 `SetDisableHunger`，客户端 `HideHungerGui` 把 HUD 鸡腿条也收掉；开关在 `worldConfig.disableHunger/hideHungerGui`）：本图节奏快，不做食物管理 |
 | 冷却 | 重生后行动封锁 `DeathRespawnHoldSeconds` 秒（可配置，默认 5）：每秒聊天框倒计时，期间免疫伤害、拦截落子/挖掘/拾取/攻击，时间到自动恢复 |
 | 掉落 | 死亡时身上棋子/道具全部掉落，无死亡惩罚（掉落本身就是惩罚；冷却期间连自己尸体上的掉落都捡不回来） |
 | PvP | 击杀是控资源的合法手段：杀一个满载玩家 = 抢一颗子 + 抢一个道具 |

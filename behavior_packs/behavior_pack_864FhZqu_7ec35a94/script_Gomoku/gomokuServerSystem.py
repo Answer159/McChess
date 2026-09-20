@@ -317,6 +317,17 @@ class GomokuServerSystem(ServerSystem):
 		self.dizzyStunUntilDict = {}  # 眩晕锤的眩晕同理不跨局
 		self.ClearAllChaosEffects()  # 混乱药水的混乱同理不跨局：清登记+通知客户端停手
 		self.ClearAllTimestopFreeze()  # 时间停止的冻结同理不跨局：清登记+通知客户端解冻
+		# 血量同样不跨局：上一局踩雷/互殴掉的血按各自最大血量回满（存活的
+		# 挂彩玩家不用带着残血开新局；阵亡的本来就会满血重生）。只改当前值
+		# 不动默认值（SetAttrValue第3参传0），避免把引擎的复活满血语义改掉
+		healthEnum = serverApi.GetMinecraftEnum().AttrType.HEALTH
+		for playerId in self.playerIds:
+			attrComp = serverApi.GetEngineCompFactory().CreateAttr(playerId)
+			if not attrComp:
+				continue
+			maxHealth = attrComp.GetAttrMaxValue(healthEnum)
+			if maxHealth and maxHealth > 0:
+				attrComp.SetAttrValue(healthEnum, maxHealth, 0)
 		if not self.boardBuilt:
 			self.BuildBoard()
 		if self.boardBuilt:

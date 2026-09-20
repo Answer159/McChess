@@ -56,3 +56,10 @@ if cheat:
 # 编辑器存的optionInfo没有这个键，放在locals()覆盖循环之后补上即不会被编辑器覆盖
 optionInfo['immediate_respawn'] = True
 
+# 屏蔽饥饿度（服务端SetDisableHunger，进图时装载不落盘，每次进图都要重设）：
+# 本图节奏快、不做食物管理，饥饿掉血纯属干扰
+disableHunger = True
+# 客户端HUD同时隐藏饥饿条（服务端屏蔽后那排鸡腿会永远满格挂着，干脆收掉；
+# 血条保留）。编辑器存的配置没有这两个键，写在locals()覆盖循环之后不会被覆盖
+hideHungerGui = True
+

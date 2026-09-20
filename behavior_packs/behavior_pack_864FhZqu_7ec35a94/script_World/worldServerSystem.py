@@ -25,6 +25,8 @@ class WorldServerSystem(ServerSystem):
 		self.done = True
 		gameComp = self.CreateComponent(serverApi.GetLevelId(), "Minecraft", "game")
 		gameComp.SetGameRulesInfo(worldConfig.gameRuleDict)
+		# 屏蔽饥饿度（HUD上的鸡腿条由worldClientSystem的HideHungerGui收掉）
+		gameComp.SetDisableHunger(worldConfig.disableHunger)
 		gameComp.fixTime = worldConfig.fixTime
 		self.NeedsUpdate(gameComp)
 		yield 2
