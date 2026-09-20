@@ -210,7 +210,7 @@
 
 ## 11. 玩法模式（模式切换框架）
 
-一局用哪套玩法由 **`config.GameMode`** 一个字符串决定，默认 `"classic"`（经典模式 = 原来的玩法，行为完全不变）。改成 `"trap"` 即整局切成**陷阱模式**；写成没注册过的名字会记一条警告并自动退回 `"classic"`，不会开不了局。**改完要重进地图才生效**（模式对象在服务端系统构造时产出）。
+一局用哪套玩法由 **`config.GameMode`** 一个字符串决定，默认 **`"random"`**：**每局开局从注册表独立随机抽一个模式**（两局连出同模式属正常随机），切完 `/say` 全服播报本局是哪个模式。固定 `"classic"`（经典模式 = 原来的玩法）或 `"trap"`（整局固定陷阱模式）也行；写成没注册过的名字会记一条警告并自动退回 `"classic"`，不会开不了局。**固定模式改完要重进地图才生效**；`"random"` 的抽取每局开局重掷（等待阶段先用经典模式顶着，进图传送/复活点等钩子不查到未布好的陷阱模式）。
 
 **目录结构（`script_Gomoku/gameModes/`）：**
 
@@ -220,14 +220,14 @@
 | `classicMode.py` | 经典模式，除了打一行日志什么都不做（默认实现就是它要的行为） |
 | `trapMode.py` | 陷阱模式的全部逻辑 |
 | `trapModeConfig.py` | 陷阱模式**所有可调数值**（一个都没写死在 `trapMode.py` 里） |
-| `modeFactory.py` | 工厂：`CreateGameMode(serverSystem)` 按 `config.GameMode` 造对象，未知键/构造异常都能兜底 |
+| `modeFactory.py` | 工厂：`CreateGameMode(serverSystem)` 按 `config.GameMode` 造对象，未知键/构造异常都能兜底；`"random"` 键 + `PickRandomModeKey()` 供每局随机抽取 |
 
 **钩子清单**（宿主 `gomokuServerSystem` 只认这些方法，不认识任何具体模式；模式之间互不 import）：
 
 | 钩子 | 宿主调用点 | 用途 |
 |---|---|---|
-| `OnEnter()` / `OnExit()` | 系统构造 / `Destroy` | 模式装载与卸载 |
-| `OnRoundStart()` | `OnRoundStart` 里、**启动刷新协程之前** | 本局场地准备（陷阱模式在这里撒生成点、长路径；地面原样不动） |
+| `OnEnter()` / `OnExit()` | 系统构造 / `Destroy`；随机模式下**每局换模式时**也各调一次（`SwitchGameModeForRound`：旧模式 `OnExit` 收尾 -> 新模式 `OnEnter`） | 模式装载与卸载 |
+| `OnRoundStart()` | `OnRoundStart` 里、**启动刷新协程之前**（随机模式的重掷/换对象也在这一步，`SwitchGameModeForRound`） | 本局场地准备（陷阱模式在这里撒生成点、长路径；地面原样不动） |
 | `OnTick()` | `OnTickServer` | 每帧逻辑（陷阱模式的踩雷检查） |
 | `OnPlayerAdd/Remove/Die(playerId)` | 对应的引擎事件处理里 | 玩家进退场与阵亡 |
 | `PickSpawnColumn(inner, outer, angleMin, angleMax)` | `SpawnAtRing` / `SpawnTierItem` / `SpawnRandomBlock` | **资源落点唯一入口**，返回 `(x, z)` 或 `None`（=本次刷新跳过）。默认实现就是原来那段"环上随机取点" |

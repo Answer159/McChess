@@ -36,6 +36,9 @@ from mod_log import logger
 class TrapMode(GameModeBase):
 	Key = "trap"
 	Name = "陷阱模式"
+	# 开局播报带踩雷警示（文案见messageConfig的mode_段；以前这句写死在
+	# OnRoundStart里，现在统一由宿主SwitchGameModeForRound播）
+	RoundAnnounceKey = "mode_round_trap"
 
 	def __init__(self, serverSystem):
 		GameModeBase.__init__(self, serverSystem)
@@ -100,7 +103,8 @@ class TrapMode(GameModeBase):
 		self.built = True
 		logger.info("[Gomoku] 陷阱模式已布好：生成点{}个 / 安全格{}个 / 陷阱格{}个".format(
 			len(self.spawnPoints), len(self.safeCells), len(self.trapCells)))
-		self.system.Announce("§6【陷阱模式】§f地面看着都一样，只有通往道具点的路是安全的，踩错一格脚下就是岩浆——看清脚下再跑")
+		# 模式播报由宿主统一做（SwitchGameModeForRound -> messageConfig的
+		# mode_round_trap，RoundAnnounceKey指过去）
 		# 开局落位：等StartLogic把玩家摆到队伍落点后，再把全体拉进安全圈
 		CoroutineMgr.StartCoroutine(self.DelayRoundStartTeleport(self.roundEpoch))
 

@@ -12,6 +12,8 @@ from mod_log import logger
 class ClassicMode(GameModeBase):
 	Key = "classic"
 	Name = "经典模式"
+	# 开局播报带一句经典模式的玩法提示（文案见messageConfig的mode_段）
+	RoundAnnounceKey = "mode_round_classic"
 
 	def OnEnter(self):
 		logger.info("[Gomoku] 玩法模式: {}".format(self.Name))

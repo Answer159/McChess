@@ -8,7 +8,7 @@ import config
 import messageConfig
 from mod_log import logger
 from coroutineMgrGas import CoroutineMgr
-from gameModes.modeFactory import CreateGameMode
+from gameModes.modeFactory import CreateGameMode, DefaultModeKey, GetGameModeKey, PickRandomModeKey, RandomModeKey
 from modCommon.gomokuCore.board import (
 	GomokuBoard, PlaceResult,
 	EMPTY,
@@ -157,8 +157,14 @@ class GomokuServerSystem(ServerSystem):
 		self.loggedTryDestroyEvent = False
 		# 当前玩法模式（工厂产出，见gameModes/modeFactory）：宿主只认GameModeBase的
 		# 钩子，不认识任何具体模式；换模式=改config.GameMode一个字符串，模式之间
-		# 互不引用。工厂拿不到/造不出配置里那个模式时会退回经典模式并记日志
-		self.gameMode = CreateGameMode(self)
+		# 互不引用。工厂拿不到/造不出配置里那个模式时会退回经典模式并记日志。
+		# "random"时等待阶段先用经典模式顶着（进图传送/复活点等钩子在等待期
+		# 就会查询模式，陷阱模式未布好前这些查询会拿到无意义结果），每局真正的
+		# 随机抽取在OnRoundStart的SwitchGameModeForRound
+		if GetGameModeKey() == RandomModeKey:
+			self.gameMode = CreateGameMode(self, DefaultModeKey)
+		else:
+			self.gameMode = CreateGameMode(self)
 		self.gameMode.OnEnter()
 		self.ListenEvent()
 
@@ -307,9 +313,6 @@ class GomokuServerSystem(ServerSystem):
 		self.dizzyStunUntilDict = {}  # 眩晕锤的眩晕同理不跨局
 		self.ClearAllChaosEffects()  # 混乱药水的混乱同理不跨局：清登记+通知客户端停手
 		self.ClearAllTimestopFreeze()  # 时间停止的冻结同理不跨局：清登记+通知客户端解冻
-		# 开局重设一遍全体复活点（进服时设过；棋盘边长变了偏移也要跟着变）
-		for playerId in self.playerIds:
-			self.SetEngineRespawnPoint(playerId)
 		if not self.boardBuilt:
 			self.BuildBoard()
 		if self.boardBuilt:
@@ -336,13 +339,42 @@ class GomokuServerSystem(ServerSystem):
 			self.CarveBoardHoles()
 		# 回合开始时StartLogic会清掉全部掉落物（/kill @e[type=item]），自维护计数同步清零
 		self.itemExpireDict = {}
-		# 本局场地准备交给玩法模式（陷阱模式在这里整平地面、生成生成点与路径）。
-		# 必须排在StartSpawners之前：刷新取点要按模式算好的实心格来挑
-		self.gameMode.OnRoundStart()
+		# 本局场地准备交给玩法模式：config.GameMode="random"时这里先随机换模式
+		# （见SwitchGameModeForRound），固定模式则只跑OnRoundStart做局内重置。
+		# 必须排在StartSpawners之前：刷新取点要按模式算好的安全格来挑
+		self.SwitchGameModeForRound()
+		# 开局重设一遍全体复活点（进服时设过；棋盘边长变了偏移也要跟着变）。
+		# 刻意挪到模式切换之后：陷阱模式的复活点在它OnRoundStart刚算好的
+		# 安全圈里，先设复活点再切模式会把重生点放到雷区/棋盘上
+		for playerId in self.playerIds:
+			self.SetEngineRespawnPoint(playerId)
 		if not self.spawnCoroutines:
 			self.StartSpawners()
 		# 本局棋子值刚重分配，比分行的颜色跟着换（胜场本身跨局累计不清零）
 		self.BroadcastScoreBoard()
+
+	# ---------- 玩法模式：每局定夺（OnRoundStart在棋盘重铺后、刷新启动前调） ----------
+
+	def SwitchGameModeForRound(self):
+		"""决定本局用哪个玩法模式并播报（config.GameMode="random"时每局重掷）。
+		随机抽到与上局同模式：沿用当前对象只跑OnRoundStart（局内重置），不做
+		白费的OnExit/OnEnter；抽到不同的：旧模式先OnExit收尾（陷阱模式在这里
+		收回残留岩浆、关掉踩雷判定）-> 换对象OnEnter -> 新模式OnRoundStart做
+		本局场地准备。固定"classic"/"trap"则永远不换，只跑OnRoundStart。
+		切完无论换没换都全服播报本局模式（文案见messageConfig的mode_段，
+		模式用RoundAnnounceKey自报具体条目，没报的用只报名字的通用模板）"""
+		newMode = None
+		if GetGameModeKey() == RandomModeKey:
+			newMode = CreateGameMode(self, PickRandomModeKey())
+		if newMode is not None and type(newMode) is not type(self.gameMode):
+			oldName = getattr(self.gameMode, 'Name', '未知模式')
+			self.gameMode.OnExit()
+			self.gameMode = newMode
+			self.gameMode.OnEnter()
+			logger.info("[Gomoku] 本局随机换模式: {} -> {}".format(oldName, newMode.Name))
+		self.gameMode.OnRoundStart()
+		announceKey = getattr(self.gameMode, 'RoundAnnounceKey', None) or 'mode_round'
+		self.Msg(announceKey, name=self.gameMode.Name)
 
 	# ---------- 乱斗：人数、盘边与棋子值 ----------
 

@@ -42,6 +42,10 @@ class GameModeBase(object):
 	# 工厂注册键（= config.GameMode 的取值）与中文名（播报/日志用）
 	Key = "base"
 	Name = "基础模式"
+	# 开局模式播报的文案key（messageConfig的mode_段；None=用通用模板
+	# mode_round只报模式名）。宿主SwitchGameModeForRound每局播一次，
+	# 想让玩家看到本模式的玩法提示就在子类里指一条具体文案
+	RoundAnnounceKey = None
 
 	def __init__(self, serverSystem):
 		# 反向引用宿主：模式可以用它的公共能力（RunCommand / EnsureBoardCenter /

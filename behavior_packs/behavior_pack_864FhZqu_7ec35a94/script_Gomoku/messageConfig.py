@@ -16,6 +16,12 @@ MESSAGES = {
 	'game_over': "§c对局已结束，请等待下一轮",
 	'game_no_endlogic': "§e未找到EndLogic组件，仅做本地播报",
 
+	# ---- 玩法模式（mode_；每局开局播报本局模式，见SwitchGameModeForRound。
+	# 模式自报RoundAnnounceKey选具体条目，没报的用mode_round通用模板兜底） ----
+	'mode_round': "§e本局玩法模式：§6{name}§e！",
+	'mode_round_classic': "§e本局模式：§6经典模式§e——原生地形自由跑图，道具照常在环形区域刷新",
+	'mode_round_trap': "§e本局模式：§6陷阱模式§e——地面看着都一样，只有通往道具点的路是安全的，踩错一格脚下就是岩浆！看清脚下再跑",
+
 	# ---- 落子（place_；校验失败类均为节流播报 kind='placeHint'） ----
 	'place_occupied': "§c此处已有棋子",
 	'place_need_team': "§c落子需要先加入队伍",
