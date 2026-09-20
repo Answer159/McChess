@@ -128,8 +128,7 @@ BoardSize = 9
 # （3人11、4人13），开局按在线人数计算。
 # FFAMaxPlayers：乱斗最多支持的玩家数（引擎棋子值1~4=黑白蓝绿四色棋石，
 # StartLogic里超过这个人数直接不让开局，见startLogicServerSystem.CheckState）。
-# ★同时改需同步：gomokuServerSystem的GOMOKU_GOLD（须避开1~FFAMaxPlayers的
-# 取值区间）、StoneNormalNameByValue/StoneHardenedNameByValue/PlayerColorDict
+# ★同时改需同步：StoneNormalNameByValue/StoneHardenedNameByValue/PlayerColorDict
 # 的条数（都按1~FFAMaxPlayers排）
 FFAMaxPlayers = 4
 BoardSizePerExtraPlayer = 2
@@ -187,8 +186,8 @@ TickingAreaRadius = 4
 # 棋盘基座
 ChessBaseBlockName = "wihzo:McChess_ChessBase"
 # 已落子的棋石（颜色=落子方队伍；普通/硬化各有独立贴图——硬化版带金属包边+铆钉标记）。
-# 挖掘门控（脚本层，见OnPlayerTryDestroyBlock）：普通棋石须石镐级、硬化棋石须铁镐级、
-# 金棋石任何镐都挖不动（只能雷管炸）。高级镐可采低级棋石/矿（等级见PickaxeTierDict）。
+# 挖掘门控（脚本层，见OnPlayerTryDestroyBlock）：普通棋石须石镐级、硬化棋石须铁镐级。
+# 高级镐可采低级棋石/矿（等级见PickaxeTierDict）。
 # 盘上挖棋石耗时（destroy_time：普通3s/硬化5s）与盘外采同系矿一致（同3s/5s）——
 # 棋子改为只产自挖矿后，拆对手的子不再额外收"拆家税"（原为6s/10s刻意加长）。
 # 挖掉即销毁无掉落，并释放引擎对应格子
@@ -200,6 +199,8 @@ StoneBlueName = "wihzo:gomoku_stone_blue"
 StoneGreenName = "wihzo:gomoku_stone_green"
 StoneBlueHardenedName = "wihzo:gomoku_stone_blue_hardened"
 StoneGreenHardenedName = "wihzo:gomoku_stone_green_hardened"
+# 金棋石已下线（金矿改产普通棋子）：方块名与集合成员关系仅保留用于清理
+# 旧存档残留的金棋石（按普通棋石同等规则挖掘/销毁），新代码不再放置它
 StoneGoldName = "wihzo:gomoku_stone_gold"
 # 棋子值 -> 棋石方块名（乱斗外观按玩家上色：1黑、2白、3蓝、4绿）。
 # 普通与硬化各一张表（硬化版外观同色带金属包边+铆钉标记）。
@@ -220,7 +221,7 @@ StoneHardenedNameByValue = {
 # 已点燃的雷管方块（TNT外观；右键棋盘摆出，BombFuseSeconds秒后引爆，
 # 引爆前被挖掉=拆除）。名字须与netease_blocks/下JSON一致
 DetonatorBlockName = "wihzo:gomoku_detonator_block"
-# 棋石名集合（挖掘时按棋盘格处理；金棋石单独判）。乱斗棋石按棋子值上色
+# 棋石名集合（挖掘时按棋盘格处理，含已下线金棋石的残留清理）。乱斗棋石按棋子值上色
 # （黑白蓝绿四色+各自的硬化款，见StoneNormalNameByValue），但归属的事实来源
 # 仍是引擎网格里的棋子值——外观颜色只是展示，不参与判定（见HandleInkUse）
 StoneBlockNameSet = {
@@ -245,7 +246,6 @@ PickaxeBoardName = "wihzo:gomoku_pickaxe_board"
 ExecutionSwordName = "wihzo:execution_sword"
 PieceItemNormal = "wihzo:gomoku_piece_normal"
 PieceItemHardened = "wihzo:gomoku_piece_hardened"
-PieceItemGold = "wihzo:gomoku_piece_gold"
 PieceItemSquare = "wihzo:gomoku_piece_square"
 PieceItemTrap = "wihzo:gomoku_piece_trap"
 InkItemName = "wihzo:gomoku_ink"
@@ -269,8 +269,7 @@ ManualItemName = "wihzo:gomoku_manual"
 #               'speed' 加速药水 / 'brush' 笔刷 / 'blackhole' 吞噬黑洞 / 'timestop' 时间停止 /
 #               'manual' 玩法说明书
 #   consumable: 使用一次即销毁（耐久1）
-#   piece 专用:  fromOre 产出该棋子的矿 / wildcard 万能挡子（金棋子，落子不分颜色、只挡线不获胜）/
-#               square 方阵棋子（2x2铺子：点击格为左上角，越界/已占格忽略，见HandleSquarePlace）/
+#   piece 专用:  fromOre 产出该棋子的矿 / square 方阵棋子（2x2铺子：点击格为左上角，越界/已占格忽略，见HandleSquarePlace）/
 #               trap 陷阱棋子（落子外观=己方普通棋石，被挖毁时炸死范围内玩家，见DetonateTrap）
 #   pickaxe专用: mineOre 本职对应的矿 / tier 镐等级（高级镐也能采低级矿与普通棋石）
 #   weapon 专用: damage 攻击玩家造成的伤害（缺省用DefaultWeaponDamage）
@@ -297,10 +296,6 @@ ItemTable = {
 		"name": "硬化棋子", "type": "piece",
 		"hardened": True,  # 落子后用硬化棋石（同色系独立贴图，挖掘耗时更长）
 		"fromOre": "wihzo:gomoku_ore_hardened",
-	},
-	PieceItemGold: {
-		"name": "金棋子", "type": "piece", "wildcard": True,
-		"fromOre": "wihzo:gomoku_ore_gold",
 	},
 	PieceItemSquare: {
 		"name": "方阵棋子", "type": "piece", "square": True,
@@ -435,10 +430,14 @@ TimestopFreezeSeconds = 5
 PickaxeTierDict = {item: cfg["tier"] for item, cfg in ItemTable.iteritems() if cfg["type"] == "pickaxe"}
 # 等级 -> 该等级镐的显示名（播报"须用X或更高级的镐"用）
 TierPickaxeNameDict = {cfg["tier"]: cfg["name"] for item, cfg in ItemTable.iteritems() if cfg["type"] == "pickaxe"}
-# 矿 -> 采集所需最低镐等级（金矿无条目=徒手可挖）
+# 矿 -> 采集所需最低镐等级（金矿无条目=徒手可挖且镐无加速——金矿JSON不带
+# netease:tier，镐挖不比徒手快，符合"远环免工具速挖"的定位）
 OreMinTierDict = {cfg["mineOre"]: cfg["tier"] for item, cfg in ItemTable.iteritems() if cfg["type"] == "pickaxe"}
 # 矿 -> 采到的棋子物品
 OrePieceItemDict = {cfg["fromOre"]: item for item, cfg in ItemTable.iteritems() if "fromOre" in cfg}
+# 金矿挖碎给普通棋子（金棋子/万能挡子机制已下线：金矿=高级环的免工具普通棋子矿，
+# 贴金只是外观区分；不写进ItemTable的fromOre——普通棋子已有对应矿，一个矿一条映射）
+OrePieceItemDict["wihzo:gomoku_ore_gold"] = PieceItemNormal
 # 全部棋子物品名集合（背包携带上限的计数范围）
 PieceItemNameSet = {item for item, cfg in ItemTable.iteritems() if cfg["type"] == "piece"}
 
@@ -446,7 +445,7 @@ PieceItemNameSet = {item for item, cfg in ItemTable.iteritems() if cfg["type"] =
 # 新一局开始时清空全体玩家背包（上一局残留的棋子/道具不留到下一局；存档开着
 # keepInventory时上一局的物品会跟人进下一局，这里统一回收）
 ClearInventoryOnRoundStart = True
-# 玩家携带棋子上限（普通/硬化/金棋子合计；镐/剑等道具不限制）。
+# 玩家携带棋子上限（普通/硬化/方阵/陷阱棋子合计；镐/剑等道具不限制）。
 # 超限时：捡拾掉落物被拦截（物品留在地上），挖矿被取消（矿留原地、镐不消耗）
 MaxCarriedPieces = 2
 # 拦截拾取后该掉落物的拾取cd（帧，30帧=1秒；防止玩家站在物品上时每帧重触发事件）
@@ -476,8 +475,7 @@ RespawnPosOffset = (0, 2, 7)
 # 乱斗下所有人互相均可造成伤害
 
 # 单人调试开关：True时单人落子在两个逻辑棋子值间交替（无视分配表），用于单人
-# 验证多方胜负逻辑；正式对战必须为False（按落子玩家的棋子值落子）。
-# 金棋子不受影响（本就不分归属）
+# 验证多方胜负逻辑；正式对战必须为False（按落子玩家的棋子值落子）
 DebugSoloAlternateSides = False
 
 # 调试聊天命令开关：True时聊天输入 #give <道具名> 可直接领取道具（#give 列出可领道具，
@@ -498,8 +496,8 @@ SpawnMaxCountDict = {
 	"wihzo:gomoku_ore_normal": 12,
 	# 硬化矿：中环合计
 	"wihzo:gomoku_ore_hardened": 6,
-	# 金矿：中环紧贴硬化矿外侧，稀少（普通/硬化棋子物品已不再直刷，
-	# 棋子全部产自挖矿——见SpawnConfigList的说明）
+	# 金矿：高级道具环（25~35格），稀少——徒手速挖可得的普通棋子，
+	# 跑远环顺路白捡子的"惊喜"（见SpawnConfigList的说明）
 	"wihzo:gomoku_ore_gold": 2,
 	# 直刷的特殊棋子物品（普通/硬化棋子物品不再直刷；道具不在此表——道具走
 	# 分级共用上限，见ItemTierDict）
@@ -532,9 +530,10 @@ SpawnConfigList = [
 	{"type": "ore", "blockName": "wihzo:gomoku_ore_normal", "radius": (8, 14), "angleRange": (180, 360), "interval": 4},
 	# 硬化棋子矿：中环
 	{"type": "ore", "blockName": "wihzo:gomoku_ore_hardened", "radius": (14, 22), "angleRange": (0, 360), "interval": 15},
-	# 金棋子矿：中环硬化矿带内（原在外环25~35格，刻意拉近——金子是万能挡子，
-	# 太远没人跑；混在硬化矿里挖着挖着捡到金子也算小惊喜），徒手可挖
-	{"type": "ore", "blockName": "wihzo:gomoku_ore_gold", "radius": (16, 20), "angleRange": (0, 360), "interval": 60},
+	# 金矿：高级道具区间（与ItemTierDict的high同环25~35格），徒手速挖、
+	# 挖碎得普通棋子（金棋子/万能挡子机制已下线——金矿=跑远环的免工具普通棋子矿，
+	# 贴金只是外观区分；不带netease:tier故镐挖不加速）
+	{"type": "ore", "blockName": "wihzo:gomoku_ore_gold", "radius": (25, 35), "angleRange": (0, 360), "interval": 60},
 	# ★棋子物品不再直刷（普通/硬化都只能挖对应矿获得）：地上白捡的棋子会让
 	# 镐子失去存在意义——想拿子就得先从低级道具环搞到镐
 	# 方阵棋子：中环偏外，低频直刷（一次铺四子，节奏价值极高故稀有；无对应矿，只能直刷）
@@ -590,27 +589,38 @@ RandomBlockName = "wihzo:gomoku_block_random"
 # 石镐刻意不在池里（权重=0）：镐子走低级道具环常规刷新，问号方块再送会让
 # 白捡的镐冲淡"挖矿换子"的动机（玩家要靠环里刷的镐去挖矿）
 RandomBlockPoolDict = {
-	PickaxeIronName: 20,
-	InkItemName: 20,
-	DetonatorItemName: 20,
+	# 铁镐 *
+	PickaxeIronName: 10,
+	# 墨水 
+	InkItemName: 10,
+	# 炸弹
+	DetonatorItemName: 10,
+	# 放棋盘 *
 	BoardItemName: 10,
+	# 处决剑
 	ExecutionSwordName: 10,
 	# 补进问号箱的6件（原先只在分级刷新环出，问号箱抽不到）——权重是
 	# 占位默认值，概率自行调配
+	# 挖棋盘 *
 	PickaxeBoardName: 10,
+	# 加速药水 *
 	SpeedPotionItemName: 10,
+	# 混乱药水
 	ChaosPotionItemName: 10,
-	SwapItemName: 5,
-	ReflectPotionItemName: 5,
-	DizzyHammerItemName: 5,
+	# 交换位置
+	SwapItemName: 10,
+	# 反伤 *
+	ReflectPotionItemName: 10,
+	# 眩晕锤
+	DizzyHammerItemName: 10,
 	# 笔刷：唯一获取途径，极低概率（1/118 ≈ 0.8%）。白送一局胜场，故刻意做成
 	# "开一百个问号方块才见一次"的彩票；调高这个数就是调高出率
-	BrushItemName: 1,
+	BrushItemName: 5,
 	# 吞噬黑洞：全盘清子的大杀器，只走问号方块（权重1=与处决剑并列最稀有档，
 	# 不进ItemTierDict常规刷新环——场上只能靠挖问号方块碰运气）
-	BlackHoleItemName: 1,
+	BlackHoleItemName: 10,
 	# 时间停止：5秒全场冻结的大杀器，同黑洞只走问号方块（权重1并列最稀有档）
-	TimestopItemName: 1,
+	TimestopItemName: 10,
 }
 # 刷新参数（独立于SpawnConfigList/ItemTierDict，自成一条刷新协程）：
 # radius 刷新环(内,外半径，格) / interval 刷新间隔(秒) /

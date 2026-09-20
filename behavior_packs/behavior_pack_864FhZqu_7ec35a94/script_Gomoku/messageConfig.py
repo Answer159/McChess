@@ -32,7 +32,6 @@ MESSAGES = {
 
 	# ---- 墨水（ink_；校验失败类均为节流播报 kind='inkHint'） ----
 	'ink_need_team': "§c使用墨水需要先加入队伍",
-	'ink_gold_immune': "§c金棋子无阵营，墨水对它无效",
 	'ink_own_piece': "§c这是己方棋子，不需要墨水",
 	'ink_converted': "§5一瓶墨水泼下，§6{side}§5的一枚棋子被转化了！",
 
@@ -85,7 +84,6 @@ MESSAGES = {
 	'piece_cap_pickup': "§c棋子携带已达上限{count}个，先落子或用掉再拾取",  # kind='pieceCap'
 	'piece_cap_mine': "§c棋子携带已达上限{count}个，先落子或用掉再采集",   # kind='pieceCap'（与拾取共享节流桶）
 	'base_break_protected': "§c棋盘基座无法被破坏",            # kind='baseBreak'
-	'gold_stone_no_pickaxe': "§c金棋石任何镐都无法挖掘，只能用爆炸雷管销毁",  # kind='goldStone'
 	'stone_tool_wrong_tier': "§c这枚棋石须用{pickaxe}（或更高级的镐）挖掘",   # kind='stoneTool'
 	'mine_wrong_pickaxe': "§c矿挖碎了，但没有{pickaxe}（或更高级的镐），棋子没有掉落",
 	'mine_give_fail': "§c棋子发放失败，矿稍后还原，请联系开发者查日志",
@@ -139,7 +137,7 @@ ManualTextList = [
 	"§r§f棋子是采集来的，不在背包里凭空产生：\n\n"
 	"§f普通棋子矿（近环）——须持 §b石镐 §f或更高级镐挖\n"
 	"§f硬化棋子矿（中环）——须持 §b铁镐 §f挖，落子更难被拆\n"
-	"§f金棋子矿（远环）——徒手可挖\n"
+	"§f金矿（高级道具环）——徒手速挖，挖碎得普通棋子\n"
 	"§f使用镐采集§d问号方块 可以获得随机道具\n"
 	"§f（有极小几率开出§5吞噬黑洞§f或§5时间停止§f）\n"
 	"§c注意：棋子最多同时携带2个，背包中持有2子时无法获得更多棋子哦",

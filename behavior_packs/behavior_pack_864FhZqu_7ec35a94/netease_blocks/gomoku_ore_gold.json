@@ -9,7 +9,7 @@
                 "color": "#FFAA00"
             },
             "minecraft:destroy_time": {
-                "value": 3
+                "value": 1.5
             },
             "netease:aabb": {
                 "collision": {
@@ -38,7 +38,7 @@
                 }
             },
             "netease:custom_tips": {
-                "value": "金棋子矿（徒手左键挖掘采集）"
+                "value": "金矿（徒手速挖，采得普通棋子）"
             }
         }
     }

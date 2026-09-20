@@ -10,18 +10,12 @@ from mod_log import logger
 from coroutineMgrGas import CoroutineMgr
 from gameModes.modeFactory import CreateGameMode, DefaultModeKey, GetGameModeKey, PickRandomModeKey, RandomModeKey
 from modCommon.gomokuCore.board import (
-	GomokuBoard, PlaceResult,
+	GomokuBoard,
 	EMPTY,
 	STATE_PLAYING, STATE_WON, STATE_DRAW,
 )
 
 ServerSystem = serverApi.GetServerSystemCls()
-
-# 金棋子（万能挡子）在引擎中的棋子值：乱斗模式下1~config.FFAMaxPlayers
-# （默认4）是玩家的逻辑棋子值（见AssignPieceValues），金棋子取区间外的值——
-# 引擎按棋子值判五连，第三方值占格且不与任何玩家匹配，天然阻断所有人连线
-# （见PlaceInEngine）。
-GOMOKU_GOLD = 8
 
 
 class GomokuServerSystem(ServerSystem):
@@ -442,7 +436,7 @@ class GomokuServerSystem(ServerSystem):
 		"""按棋子值取该玩家的棋石方块（1黑/2白/3蓝/4绿，见config的
 		StoneNormalNameByValue/StoneHardenedNameByValue；hardened取同色硬化款）。
 		值越界/未分配兜底黑棋石（硬化兜底黑硬化款）——归属的事实来源仍是引擎
-		网格里的棋子值，外观只是展示；金棋子另有StoneGoldName不走这里"""
+		网格里的棋子值，外观只是展示"""
 		table = config.StoneHardenedNameByValue if hardened else config.StoneNormalNameByValue
 		fallback = config.StoneBlackHardenedName if hardened else config.StoneBlackName
 		return table.get(pieceValue) or fallback
@@ -1168,7 +1162,7 @@ class GomokuServerSystem(ServerSystem):
 			self.Announce("§c落子失败：本局还没给你分配棋子（满员旁观/等待开局）")
 			return
 		if config.DebugSoloAlternateSides:
-			# 调试模式（config开关）：单人无法测多方，落子在两个棋子值间交替；金棋子不受影响
+			# 调试模式（config开关）：单人无法测多方，落子在两个棋子值间交替
 			pieceValue = 1 if self.debugPlaceCount % 2 == 0 else 2
 			self.debugPlaceCount += 1
 		if carriedItem is None:
@@ -1181,21 +1175,16 @@ class GomokuServerSystem(ServerSystem):
 			self.MsgThrottled(playerId, 'placeHint', 'place_hold_piece')
 			return
 		# 消耗棋子，按落子玩家的棋子值入引擎并放对应颜色的棋石（乱斗外观
-		# 按玩家上色：1黑2白3蓝4绿，见GetStoneNameForValue；金棋子为万能
-		# 挡子，不分归属固定金棋石）；硬化棋子落成同色硬化棋石——挖掘更久
-		# （destroy_time更大），外观同色带金属包边
+		# 按玩家上色：1黑2白3蓝4绿，见GetStoneNameForValue）；硬化棋子落成同色
+		# 硬化棋石——挖掘更久（destroy_time更大），外观同色带金属包边
 		if not self.ConsumeCarriedItem(playerId):
 			return
 		hardened = bool(itemCfg.get('hardened'))
-		if itemCfg.get('wildcard'):
-			stoneName = config.StoneGoldName
-			player = GOMOKU_GOLD
-		else:
-			stoneName = self.GetStoneNameForValue(pieceValue, hardened)
-			player = pieceValue
+		stoneName = self.GetStoneNameForValue(pieceValue, hardened)
+		player = pieceValue
 		stonePos = self.GridToWorld(bx, by)
 		self.RunCommand('/setblock {} {} {} {}'.format(stonePos[0], stonePos[1], stonePos[2], stoneName))
-		result = self.PlaceInEngine(bx, by, player)
+		result = self.board.place(bx, by, player)
 		logger.info("[Gomoku] 落子: {} {} {}".format(stonePos, player, carriedItem))
 		if itemCfg.get('trap') and result.ok:
 			# 陷阱棋子：落下的普通棋石外观无差别，雷只登记在trapCells（被挖毁时引爆）
@@ -1237,7 +1226,7 @@ class GomokuServerSystem(ServerSystem):
 		for cx, cy in legalCells:
 			stonePos = self.GridToWorld(cx, cy)
 			self.RunCommand('/setblock {} {} {} {}'.format(stonePos[0], stonePos[1], stonePos[2], stoneName))
-			result = self.PlaceInEngine(cx, cy, player)
+			result = self.board.place(cx, cy, player)
 			if not result.ok:
 				# 引擎拒收（正常已被前置过滤，竞态兜底）：撤掉刚放的方块
 				self.RunCommand('/setblock {} {} {} air'.format(stonePos[0], stonePos[1], stonePos[2]))
@@ -1252,20 +1241,6 @@ class GomokuServerSystem(ServerSystem):
 				break
 		if placed and self.board.state == STATE_PLAYING:
 			self.Msg('place_burst_placed', count=placed)
-
-	def PlaceInEngine(self, bx, by, player):
-		"""落子写入引擎。金棋子用第三方棋子值占位（不与黑白匹配，天然阻断连线）；
-		若金子恰好连成五，引擎会误判终局——用序列化快照恢复到进行中状态。"""
-		if player != GOMOKU_GOLD:
-			return self.board.place(bx, by, player)
-		snapshot = self.board.serialize()
-		result = self.board.place(bx, by, player)
-		if result.state == STATE_WON:
-			snapshot["stones"].append([bx, by, player])
-			snapshot["history"].append([bx, by, player])
-			self.board = GomokuBoard.deserialize(snapshot)
-			result = PlaceResult(True, player=player, state=self.board.state)
-		return result
 
 	def CheckBoardFull(self):
 		"""落子后查满盘（引擎网格远大于可落子区，引擎的is_full永不触发，平局在这判）：
@@ -1287,11 +1262,10 @@ class GomokuServerSystem(ServerSystem):
 		"""手持墨水右键棋盘上的棋石 -> 转化为己方（墨水耐久1，用一次即碎）。
 		棋石外观按棋子值上色（1黑2白3蓝4绿），转化后方块换成使用者的颜色，
 		但归属的事实来源仍是引擎网格里的棋子值：非己方值即可转化（持有者
-		是谁看GetPieceOwnerName，含已离场者的子）；金棋子（GOMOKU_GOLD）无
-		归属不可转化，己方棋石无需转化。硬化属性保留（墨水只换归属/颜色不换
-		材质）；引擎侧先删旧子再落新子（同格改值），转化补齐五连同 normal
-		落子一样判胜。陷阱雷跟着格子走：被转化的陷阱棋石换主后仍是陷阱，
-		挖它照样炸（trapCells不因转化而清）"""
+		是谁看GetPieceOwnerName，含已离场者的子）；己方棋石无需转化。
+		硬化属性保留（墨水只换归属/颜色不换材质）；引擎侧先删旧子再落新子
+		（同格改值），转化补齐五连同 normal 落子一样判胜。陷阱雷跟着格子走：
+		被转化的陷阱棋石换主后仍是陷阱，挖它照样炸（trapCells不因转化而清）"""
 		if not self.IsStoneSlot(pos):
 			return  # 点击的不是任何棋盘格的落子层（与HandleStoneBreak同判定）
 		if self.board.state != STATE_PLAYING:
@@ -1304,9 +1278,6 @@ class GomokuServerSystem(ServerSystem):
 		blockName = self.GetBlockName(pos)
 		if not blockName or blockName not in config.StoneBlockNameSet:
 			return  # 落子层但不是棋石（正常不会有），静默忽略
-		if blockName == config.StoneGoldName:
-			self.Announce("§c金棋子无归属，墨水对它无效")
-			return
 		bx, by = self.WorldToGrid(pos)
 		targetValue = self.board.get(bx, by)
 		if targetValue == EMPTY:
@@ -1322,10 +1293,10 @@ class GomokuServerSystem(ServerSystem):
 		self.RunCommand('/setblock {} {} {} {}'.format(pos[0], pos[1], pos[2], stoneName))
 		# 引擎同步：remove+place（remove失败=计数脱同步，place会自愈补上该格）
 		self.board.remove(bx, by)
-		result = self.PlaceInEngine(bx, by, pieceValue)
-		ownerName = self.GetPieceOwnerName(targetValue) if targetValue != GOMOKU_GOLD else None
+		result = self.board.place(bx, by, pieceValue)
+		ownerName = self.GetPieceOwnerName(targetValue)
 		if ownerName is None:
-			ownerText = "已离场玩家" if targetValue != GOMOKU_GOLD else "金棋子"
+			ownerText = "已离场玩家"
 		else:
 			ownerText = ownerName
 		self.Announce("§5一瓶墨水泼下，§6{}§5的一枚棋子被转化了！".format(ownerText))
@@ -1339,8 +1310,8 @@ class GomokuServerSystem(ServerSystem):
 		摆出一个已点燃的雷管方块（TNT外观），BombFuseSeconds秒后引爆（见BombFuse）。
 		摆放不替换任何方块：点击列的落子层(y1+1)有棋石 -> 叠在棋石上方(y1+2)；
 		空 -> 直接放在落子层。爆炸清以雷管方块为中心的立方体
-		（BombBlastRange=3即3x3x3）内的全部棋石，不分敌我、不分颜色
-		（金棋子照炸）；只清棋石，基座与地形无损（不留坑）。雷管耐久1"""
+		（BombBlastRange=3即3x3x3）内的全部棋石，不分敌我、不分颜色；
+		只清棋石，基座与地形无损（不留坑）。雷管耐久1"""
 		y1 = self.GetBoardBounds()[1]
 		if not (self.IsBoardColumn(pos[0], pos[2]) and pos[1] - y1 in (0, 1, 2)):
 			return  # 点击目标不在主盘/扩展格上，不响应
@@ -1404,8 +1375,8 @@ class GomokuServerSystem(ServerSystem):
 		logger.info("[Gomoku] 雷管引爆: {} 炸除{}枚 扫描到: {}".format(bombPos, removed, seenNames))
 
 	def HandleBlackholeUse(self, playerId):
-		"""吞噬黑洞：右键释放，吞噬棋盘上的全部棋子——不分敌我、不分颜色
-		（金棋子照吞），主盘与便携棋盘扩展格上的都算。只清棋石：基座与扩展格
+		"""吞噬黑洞：右键释放，吞噬棋盘上的全部棋子——不分敌我、不分颜色，
+		主盘与便携棋盘扩展格上的都算。只清棋石：基座与扩展格
 		本身无损，清完仍可继续落子；引擎整盘重置（引擎里只有棋子，reset=全部
 		释放），陷阱雷随盘作废（被吞的陷阱棋石=被远程拆除，不引爆）。
 		只从问号方块奖励池产出（RandomBlockPoolDict），不进常规刷新环。
@@ -1763,9 +1734,9 @@ class GomokuServerSystem(ServerSystem):
 			logger.warning("[Gomoku] DamageBoardItem 失败: {}".format(e))
 
 	def OnPlayerTryDestroyBlock(self, args):
-		"""左键挖掘入口（挖穿前触发）：矿->采集（普通/硬化矿须对应镐级、金矿徒手可挖，
-		高级镐也能采低级矿，见PickaxeTierDict）；
-		棋盘棋石->普通棋石须石镐级、硬化棋石须铁镐级、金棋石任何镐都挖不动（只能雷管炸）；
+		"""左键挖掘入口（挖穿前触发）：矿->采集（普通/硬化矿须对应镐级、金矿徒手
+		可挖且镐无加速，高级镐也能采低级矿，见PickaxeTierDict）；
+		棋盘棋石->普通棋石须石镐级、硬化棋石须铁镐级；
 		盘上挖掘耗时（6s/10s）均长于盘外采同系矿（3s/5s），由方块destroy_time控制；
 		棋盘基座->一律取消挖掘（不依赖destroy_time硬扛，脚本层直接cancel；
 		将来实现特殊道具时在此按手持道具放行）。棋子携带已满（MaxCarriedPieces）时
@@ -1799,16 +1770,9 @@ class GomokuServerSystem(ServerSystem):
 			return
 		if blockName not in config.OrePieceItemDict:
 			if blockName in config.StoneBlockNameSet:
-				# 金棋石：任何镐都挖不动（脚本一律取消，与基座同款机制）——
-				# 只能靠雷管炸（墨水对金无效，金子无阵营可转化）
-				if blockName == config.StoneGoldName:
-					args['cancel'] = True
-					playerId = args.get('playerId')
-					if playerId:
-						self.MsgThrottled(playerId, 'goldStone', 'gold_stone_no_pickaxe')
-					return
 				# 普通棋石须石镐级、硬化棋石须铁镐级（更高级的镐也能挖低级棋石，见PickaxeTierDict；
-				# 挖棋石不消耗镐，镐耐久只花在挖矿上）；
+				# 挖棋石不消耗镐，镐耐久只花在挖矿上）。金棋石已下线，但仍在集合里
+				# 兜旧存档残留（当普通棋石处理：石镐级可挖、销毁释放格子）；
 				# 盘上挖掘耗时由方块destroy_time控制（6s/10s），均长于盘外采同系矿（3s/5s）
 				if blockName in config.HardenedStoneNameSet:
 					minTier = 2
@@ -1866,7 +1830,7 @@ class GomokuServerSystem(ServerSystem):
 
 	def HandleStoneBreak(self, args):
 		"""棋盘棋石被挖掉（走到这里的都过了门控：普通棋石须石镐级、硬化棋石须铁镐级
-		（高级镐通用）、金棋石已被取消）：挖掉即销毁、无掉落，并释放引擎中对应格子（被挖掉的子不再占线）"""
+		（高级镐通用））：挖掉即销毁、无掉落，并释放引擎中对应格子（被挖掉的子不再占线）"""
 		pos = (args.get('x'), args.get('y'), args.get('z'))
 		if None in pos:
 			return
