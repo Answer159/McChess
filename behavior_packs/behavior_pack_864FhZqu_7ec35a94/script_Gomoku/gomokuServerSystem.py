@@ -1439,11 +1439,12 @@ class GomokuServerSystem(ServerSystem):
 
 	def HandleBoardPickUse(self, playerId, pos):
 		"""手持破盘镐右键棋盘基座 -> 拆掉该格基座（主盘格/便携棋盘扩展格都能拆，
-		判定走IsPlayableCell）：本局该格无法落子（没有基座方块可
-		右键），格子里的浮空棋石不受影响；新一局开始时基座整层重铺，拆掉的格子自动修复
-		（见OnRoundStart）。基座destroy_time=100000，左键长挖到不了挖穿事件，故走
-		右键即拆（与墨水/雷管同一条ServerItemUseOnEvent通道——物品不带netease:weapon
-		组件，带该组件的工具类物品右键不发使用事件，曾导致本道具右键无效）。
+		判定走IsPlayableCell），其上的棋石悬空即碎、引擎同步释放该格（陷阱雷随格
+		作废）；本局该格无法落子（没有基座方块可右键），新一局开始时基座整层重铺，
+		拆掉的格子自动修复（见OnRoundStart）。基座destroy_time=100000，左键长挖
+		到不了挖穿事件，故走右键即拆（与墨水/雷管同一条ServerItemUseOnEvent通道
+		——物品不带netease:weapon组件，带该组件的工具类物品右键不发使用事件，
+		曾导致本道具右键无效）。
 		只能拆基座——右键矿/棋石/地形/已拆的洞一律不响应也不消耗。
 		耐久1，拆一次即碎"""
 		blockName = self.GetBlockName(pos)
@@ -1462,14 +1463,24 @@ class GomokuServerSystem(ServerSystem):
 			return
 		self.RunCommand('/setblock {} {} {} air'.format(pos[0], pos[1], pos[2]))
 		gx, gy = self.WorldToGrid(pos)
-		if self.board.get(gx, gy) == EMPTY:
-			# 该格没有浮空棋石：从本局可落子格里除名——满盘判定不再等这格
-			# （它永远填不上了）；有浮空棋石的格保留（那格算已占用）。
-			# 扩展格同步从extensionCells除名：本局可用便携棋盘在原地重新补铺
-			self.boardCells.discard((pos[0], pos[2]))
-			self.extensionCells.discard((pos[0], pos[2]))
-		self.Msg('board_pick_removed')
-		logger.info("[Gomoku] 破盘镐拆格: {} ({})".format(pos, playerId))
+		# 基座一拆，其上的棋石悬空即碎（不留浮空子）：引擎同步释放该格，
+		# 陷阱雷随格作废——与被炸掉的陷阱棋石同款"远程拆除"语义，不引爆
+		removedStone = False
+		stonePos = (pos[0], pos[1] + 1, pos[2])
+		if self.GetBlockName(stonePos) in config.StoneBlockNameSet:
+			self.RunCommand('/setblock {} {} {} air'.format(*stonePos))
+			self.board.remove(gx, gy)  # 超界/已空返回not ok，忽略即可
+			self.trapCells.discard((gx, gy))
+			removedStone = True
+		# 该格已无基座无法落子：从本局可落子格里除名（满盘判定不再等这格，
+		# 它永远填不上了）；扩展格同步除名：本局可用便携棋盘在原地重新补铺
+		self.boardCells.discard((pos[0], pos[2]))
+		self.extensionCells.discard((pos[0], pos[2]))
+		if removedStone:
+			self.Msg('board_pick_removed_stone')
+		else:
+			self.Msg('board_pick_removed')
+		logger.info("[Gomoku] 破盘镐拆格: {} 碎石={} ({})".format(pos, removedStone, playerId))
 
 	def HandleSwapUse(self, playerId):
 		"""换位符：与随机一名其他玩家互换位置（乱斗模式目标=随机抽取——2人时
