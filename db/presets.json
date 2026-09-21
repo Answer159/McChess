@@ -12,7 +12,7 @@
         "dimension": 0, 
         "entityId": null, 
         "isPreLoad": false, 
-        "loadPresetCfg": false, 
+        "loadPresetCfg": true, 
         "maxChunkPos": [
             116, 
             34
@@ -59,7 +59,7 @@
         "dimension": 0, 
         "entityId": null, 
         "isPreLoad": false, 
-        "loadPresetCfg": false, 
+        "loadPresetCfg": true, 
         "maxChunkPos": [
             116, 
             36

@@ -47,14 +47,17 @@ class GomokuClientSystem(ClientSystem):
 	  彻底绕开轮盘无事件/GetInputVector回声/解锁清零三个死结。
 	到期/提前解除走ChaosStop统一收尾（务必解锁输入）
 
-	时间停止的输入冻结同样只能做在客户端（时间停止道具右键，见服务端
-	HandleTimestopUse）：服务端TimestopFreezeEvent -> 记录到期时刻并用
-	operationComp关本地输入——SetCanMove/SetCanJump/SetCanAttack（PC键鼠
-	与触屏全屏蔽移动/跳跃/攻击与破坏，SetCanMove(False)还顺带清掉按住的
-	输入向量，立即停下）；视角转动不关（被冻住也能干瞪眼）。只在开始/结束
-	各设一次、不逐帧重设；到期走OnScriptTickClient的本地时钟TimestopStop
-	恢复（务必恢复，否则输入会一直关着）。挖掘/落子/道具/拾取的拦截在
-	服务端（IsTimestopFrozen），客户端这层是体验、服务端是权威兜底。
+	输入冻结是多来源共用的登记表（见HoldInput/TickInputHolds）——时间停止
+	（服务端TimestopFreezeEvent，见HandleTimestopUse）与阵亡冷却（服务端
+	DeathHoldEvent，见OnPlayerDie——冷却期间人已重生但站定不能动：挖掘/
+	拾取/落子等交互在服务端拦，移动是客户端权威只能在客户端关）都走这套：
+	operationComp的SetCanMove/SetCanJump/SetCanAttack（PC键鼠与触屏全屏蔽
+	移动/跳跃/攻击与破坏，SetCanMove(False)还顺带清掉按住的输入向量，
+	立即停下）；视角转动不关（被冻住也能干瞪眼）。多个来源可叠加、各记
+	各的到期时刻（本地时钟），全到期才恢复；冻结期间每帧重申关闭——阵亡
+	重生时引擎可能把输入重新打开，靠逐帧压回（务必恢复，否则输入会一直
+	关着）。时间停止的服务端拦截见IsTimestopFrozen，阵亡冷却见IsRespawnHeld，
+	客户端这层是体验、服务端是权威兜底。
 
 	比分文字板（TextBoard，世界里的文字）：纯客户端组件，服务端没有这套
 	API——想把比分立在场地里，只能由客户端建板。为什么一行一块板：引擎里
@@ -76,8 +79,9 @@ class GomokuClientSystem(ClientSystem):
 		self.chaosLastYaw = None
 		# 假摇杆HUD节点（触屏模式用，OnUiInitFinished创建）
 		self.chaosJoyNode = None
-		# 时间停止：解冻时刻（本地时钟；0=未冻结）
-		self.timestopUntil = 0.0
+		# 输入冻结登记表（时间停止/阵亡冷却共用）：来源 -> 解冻时刻
+		# （本地时钟；空dict=没有冻结，见HoldInput/TickInputHolds）
+		self.inputHoldUntil = {}
 		# 比分文字板：标题行的板id（建好后不再变）；玩家行的板id按行序
 		# （第i个 = 锚点下方第i+1行）；最近一次收到的比分行
 		# [[整行文字, RGBA], ...]（板还没建好时先缓存文案）
@@ -96,6 +100,8 @@ class GomokuClientSystem(ClientSystem):
 			config.ChaosConfuseEvent, self, self.OnChaosConfuse)
 		self.ListenForEvent(config.ModName, config.ServerSystemName,
 			config.TimestopFreezeEvent, self, self.OnTimestopFreeze)
+		self.ListenForEvent(config.ModName, config.ServerSystemName,
+			config.DeathHoldEvent, self, self.OnDeathHold)
 		self.ListenForEvent(config.ModName, config.ServerSystemName,
 			config.GomokuScoreBoardEvent, self, self.OnScoreBoardUpdate)
 		self.ListenForEvent(clientApi.GetEngineNamespace(), clientApi.GetEngineSystemName(),
@@ -118,6 +124,8 @@ class GomokuClientSystem(ClientSystem):
 			config.ChaosConfuseEvent, self, self.OnChaosConfuse)
 		self.UnListenForEvent(config.ModName, config.ServerSystemName,
 			config.TimestopFreezeEvent, self, self.OnTimestopFreeze)
+		self.UnListenForEvent(config.ModName, config.ServerSystemName,
+			config.DeathHoldEvent, self, self.OnDeathHold)
 		self.UnListenForEvent(config.ModName, config.ServerSystemName,
 			config.GomokuScoreBoardEvent, self, self.OnScoreBoardUpdate)
 		self.UnListenForEvent(clientApi.GetEngineNamespace(), clientApi.GetEngineSystemName(),
@@ -289,27 +297,70 @@ class GomokuClientSystem(ClientSystem):
 			self.chaosInputVec = vec
 			self.LockChaosInput()
 
-	# ---------- 时间停止 ----------
+	# ---------- 输入冻结（时间停止 / 阵亡冷却共用） ----------
 
 	def OnTimestopFreeze(self, args):
-		"""服务端通知本客户端玩家被时间停止（时间停止道具右键/#调试）：记录到期
-		时刻并关掉本地移动/跳跃/攻击输入（见SetTimestopControls；视角转动保留）。
-		连吃两次只重置时长；duration=0 = 服务端要求立即解冻（新一局开始）"""
+		"""服务端通知本客户端玩家被时间停止（时间停止道具右键）：登记'timestop'
+		冻结并立刻关输入（见HoldInput）。连吃两次只重置时长；
+		duration=0 = 服务端要求立即解冻（新一局开始）"""
 		try:
 			duration = float(args.get('duration', 0))
 		except (TypeError, ValueError):
 			duration = 0.0
 		if duration <= 0:
-			self.TimestopStop()
+			self.ReleaseInput('timestop')
 			return
-		self.timestopUntil = time.time() + duration
-		self.SetTimestopControls(False)
+		self.HoldInput('timestop', duration)
 		logger.info("[Gomoku] 时间停止开始：输入冻结{}秒（可转视角）".format(duration))
 
-	def SetTimestopControls(self, enabled):
-		"""开关本地玩家的移动/跳跃/攻击输入（时间停止用，operationComp按文档
-		传levelId创建）。SetCanMove(False)会顺带清掉当前输入向量——按着前进键
-		也会立即停下（见控制组件文档），正好是"冻结"的表现"""
+	def OnDeathHold(self, args):
+		"""服务端通知本客户端进入/提前解除阵亡冷却（玩家阵亡时发，见服务端
+		OnPlayerDie）：登记'death'冻结——冷却期间人已自动重生但站定不能动。
+		挖掘/拾取/落子等交互在服务端拦（IsRespawnHeld），移动是客户端权威
+		只能在客户端关。duration=0 = 提前解除（新一局开始）"""
+		try:
+			duration = float(args.get('duration', 0))
+		except (TypeError, ValueError):
+			duration = 0.0
+		if duration <= 0:
+			self.ReleaseInput('death')
+			return
+		self.HoldInput('death', duration)
+		logger.info("[Gomoku] 阵亡冷却：输入冻结{}秒（可转视角）".format(duration))
+
+	def HoldInput(self, reason, duration):
+		"""登记一条输入冻结来源并立刻关输入。多个来源可叠加（时间停止中
+		阵亡等），各记各的到期时刻，全到期才恢复。视角转动不关（被冻住
+		也能干瞪眼）"""
+		self.inputHoldUntil[reason] = time.time() + duration
+		self.SetInputControls(False)
+
+	def ReleaseInput(self, reason):
+		"""解除一条冻结来源：还有其他来源在冻着就只删登记不恢复输入；
+		没有登记过则什么都不做（幂等）"""
+		if self.inputHoldUntil.pop(reason, None) is None:
+			return
+		if not self.inputHoldUntil:
+			self.SetInputControls(True)
+			logger.info("[Gomoku] 输入冻结全部解除，输入已恢复")
+
+	def TickInputHolds(self):
+		"""每帧维护输入冻结（见OnScriptTickClient）：本地时钟到期的来源剔除
+		（全到期恢复输入）；仍有冻结的逐帧重申关闭——阵亡重生时引擎可能把
+		输入重新打开，靠这里压回去"""
+		if not self.inputHoldUntil:
+			return
+		now = time.time()
+		for reason in list(self.inputHoldUntil.keys()):
+			if now >= self.inputHoldUntil[reason]:
+				self.ReleaseInput(reason)
+		if self.inputHoldUntil:
+			self.SetInputControls(False)
+
+	def SetInputControls(self, enabled):
+		"""开关本地玩家的移动/跳跃/攻击输入（operationComp按文档传levelId创建）。
+		SetCanMove(False)会顺带清掉当前输入向量——按着前进键也会立即停下
+		（见控制组件文档），正好是"冻结"的表现"""
 		try:
 			operationComp = clientApi.GetEngineCompFactory().CreateOperation(clientApi.GetLevelId())
 			if operationComp:
@@ -317,16 +368,7 @@ class GomokuClientSystem(ClientSystem):
 				operationComp.SetCanJump(enabled)
 				operationComp.SetCanAttack(enabled)
 		except Exception as e:
-			logger.warning("[Gomoku] 时间停止开关输入失败: {}".format(e))
-
-	def TimestopStop(self):
-		"""时间停止结束/提前解除的统一收尾：恢复移动/跳跃/攻击输入——必须恢复，
-		否则玩家的输入会一直关着（连聊天外的一切操作都动不了）"""
-		if self.timestopUntil <= 0:
-			return
-		self.timestopUntil = 0.0
-		self.SetTimestopControls(True)
-		logger.info("[Gomoku] 时间停止结束，输入已恢复")
+			logger.warning("[Gomoku] 开关输入失败: {}".format(e))
 
 	# ---------- 比分文字板 ----------
 
@@ -421,15 +463,15 @@ class GomokuClientSystem(ClientSystem):
 	# ---------- 帧驱动/销毁 ----------
 
 	def OnScriptTickClient(self, args=None):
-		"""每帧回调。时间停止到期检查（本地时钟到期自动恢复输入，见TimestopStop）；
+		"""每帧回调。输入冻结维护（时间停止/阵亡冷却：本地时钟到期自动恢复，
+		冻结中逐帧重申关闭防引擎重生时重新打开输入，见TickInputHolds）；
 		混乱期间的职责见下方正文（到期走ChaosStop统一收尾）：视角左右反向——
 		只镜像yaw（鼠标向左转视角向右、向反向转同样角度），pitch上下不动。
 		实现：当前yaw与上一帧设定值的差=本帧鼠标水平增量，按相反方向设回
 		（纯镜像无跳变）；SetRot的pitch参数原样透传引擎现值。
 		移动反向不在这里做：PC键鼠走事件驱动（OnKeyPressInGame/OnGamepadStick），
 		触屏模式由假摇杆HUD接管（见chaosJoystickUI）"""
-		if self.timestopUntil > 0 and time.time() >= self.timestopUntil:
-			self.TimestopStop()
+		self.TickInputHolds()
 		if self.chaosUntil <= 0:
 			return
 		if time.time() >= self.chaosUntil:
@@ -479,8 +521,10 @@ class GomokuClientSystem(ClientSystem):
 
 	def Destroy(self):
 		logger.info("===== Gomoku Client System Destroy =====")
-		# 时间停止若还在冻结中，先恢复输入再拆监听——否则输入会一直关着
-		self.TimestopStop()
+		# 输入冻结（时间停止/阵亡冷却）若还在进行中，先恢复输入再拆监听——
+		# 否则输入会一直关着
+		for reason in list(self.inputHoldUntil.keys()):
+			self.ReleaseInput(reason)
 		# 混乱若未到期同样先解除（解锁输入、收起假摇杆）
 		self.ChaosStop()
 		# 回收比分文字板

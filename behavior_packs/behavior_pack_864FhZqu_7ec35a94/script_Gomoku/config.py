@@ -84,6 +84,10 @@ ChaosConfuseEvent = "GomokuChaosConfuseEvent"
 # 通知玩家被时间停止（服务端 -> 客户端：客户端关闭移动/跳跃/攻击输入，
 # 见gomokuClientSystem）
 TimestopFreezeEvent = "GomokuTimestopFreezeEvent"
+# 通知玩家进入/提前解除阵亡冷却（服务端 -> 客户端：客户端同样关移动——
+# 冷却期间人已重生但站定不能动；交互类在服务端拦截，见OnPlayerDie与
+# gomokuClientSystem的输入冻结登记表）
+DeathHoldEvent = "GomokuDeathHoldEvent"
 
 # 跨Mod事件/系统名（★改=对应Mod的config同步改，且事件名是字符串字面量广播，需全局搜）
 StartLogicModName = "StartLogicMod"
@@ -99,15 +103,19 @@ TeamServerSystemName = "TeamServerSystem"
 # 模式只负责"地形怎么铺、资源刷在哪、能不能放方块、死后在哪重生、每帧查什么"
 # 这几个钩子（见gameModes/baseMode.py）。可选值来自gameModes/modeFactory.py的
 # 注册表；各模式自己的参数在各自的配置文件里，与本文件互不干扰：
-#   "random"  每局随机（默认）：每局开局从注册表独立抽一个模式并全服播报
-#             本局是哪个（见SwitchGameModeForRound；两局连出同模式属正常随机）
-#   "classic" 固定经典模式：地图原生地形，资源在环形区域随机刷（模式框架之前的行为）
+#   "classic" 固定经典模式（默认）：地图原生地形，资源在环形区域随机刷
+#             （模式框架之前的行为）
 #   "trap"    固定陷阱模式：只有通往道具生成点的路是安全的，踩到路外的格子
 #             -> 变岩浆+掉血+弹回上一个安全格（参数见
 #             gameModes/trapModeConfig.py：陷阱区半边长/安全圈/路径条数/岩浆时长…）
-# ★固定模式改完重进地图生效；"random"的抽取每局开局重掷。写成没注册的名字
-# 会记警告并退回"classic"
-GameMode = "random"
+#   "random"  每局随机：每局开局从注册表独立抽一个模式并全服播报本局是哪个
+#             （见SwitchGameModeForRound；两局连出同模式属正常随机）
+# 运行时切换（不重进地图）：聊天输入 #changemode 在经典<->陷阱间来回切，
+# 压过本配置（下一局开局生效，正式对战也可用——它不走调试开关，
+# 见gomokuServerSystem.OnServerChat与SwitchGameModeForRound的gameModeOverride）
+# ★固定模式改完重进地图生效；"random"的抽取每局开局重掷（被#changemode
+# 切换过则不再随机——运行时选择优先）。写成没注册的名字会记警告并退回"classic"
+GameMode = "classic"
 
 # ---------------------- 棋盘 ----------------------
 # 棋盘中心（唯一事实来源）。编辑器里移动棋盘后，把Anchor新坐标同步到这里即可。

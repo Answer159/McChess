@@ -35,6 +35,10 @@ GameModeClsDict = {
 # 配置写错/缺省时用哪个模式
 DefaultModeKey = ClassicMode.Key
 
+# 各模式的键常量（宿主运行时切换用，如#changemode命令——避免裸字符串散落）
+ClassicModeKey = ClassicMode.Key
+TrapModeKey = TrapMode.Key
+
 # "每局随机换模式"专用键：不是注册表里的模式名，GetGameModeKey原样返回，
 # 由宿主在每局OnRoundStart时识别并调PickRandomModeKey重掷（见
 # gomokuServerSystem.SwitchGameModeForRound）

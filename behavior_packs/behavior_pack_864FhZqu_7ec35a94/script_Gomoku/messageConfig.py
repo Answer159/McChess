@@ -21,6 +21,7 @@ MESSAGES = {
 	'mode_round': "§e本局玩法模式：§6{name}§e！",
 	'mode_round_classic': "§e本局模式：§6经典模式§e——原生地形自由跑图，道具照常在环形区域刷新",
 	'mode_round_trap': "§e本局模式：§6陷阱模式§e——地面看着都一样，只有通往道具点的路是安全的，踩错一格脚下就是岩浆！看清脚下再跑",
+	'mode_switched': "§e下一局玩法模式已切换为：§6{name}§e！§7（再输一次 #changemode 切回）",
 
 	# ---- 落子（place_；校验失败类均为节流播报 kind='placeHint'） ----
 	'place_occupied': "§c此处已有棋子",
@@ -49,6 +50,12 @@ MESSAGES = {
 	'board_pick_wrong_target': "§c破盘镐只能右键棋盘基座来拆格",  # 节流kind='boardPick'
 	'board_pick_no_game': "§c对局未在进行中，破盘镐没有目标（新一局基座会重铺）",  # 节流kind='boardPick'（与wrong_target同桶）
 	'board_pick_removed': "§c破盘镐拆掉了一格棋盘基座，该格本局无法落子（新一局自动修复）",
+
+	# ---- 笔刷（brush_） ----
+	'brush_no_board': "§c本局没有比分记分牌，笔刷无处可用",  # 单玩家私信
+	'brush_fail_pos': "§c笔刷失败：无法读取你的位置",          # 单玩家私信
+	'brush_too_far': "§c离比分记分牌太远（还差{distance}格），走近点再涂",  # 单玩家私信
+	'brush_painted': "§e{player}§f用笔刷在记分牌上给自己涂了§6{count}§f分（现有{wins}胜）！",
 
 	# ---- 换位符（swap_） ----
 	'swap_fail_no_pos': "§c换位失败：无法读取你的位置",
@@ -178,5 +185,6 @@ ManualTextList = [
 	"§f  两者都只能从§d问号方块§f中极小几率开出\n",
 	"§l§e■ 阵亡规则\n"
 	"§r§f死亡后会自动在棋盘附近复活。\n\n"
+    "§r§f输入#changemode后可以切换游戏模式为陷阱模式，再输入一次后切回"
 	"§7—— 祝武运昌隆 ——",
 ]

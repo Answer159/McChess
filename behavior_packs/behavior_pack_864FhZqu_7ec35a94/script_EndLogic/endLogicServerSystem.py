@@ -276,6 +276,24 @@ class EndLogicServerSystem(ServerSystem):
 			return  # 本局已结算，防重复触发
 		self.SettleAndRecord(victorName, victoryText, victoryPlayerIdList, victoryTeamName)
 
+	# 外部加分入口：非对局胜利途径给某记分名加系列赛胜场（GomokuMod的笔刷道具
+	# "白捡一局"用，跨Mod直接系统调用）。加分并广播比分；未到夺冠线时当前对局
+	# 不受影响；达到matchWinLimit则立即按夺冠收尾——复用SettleAndRecord整条收尾
+	# 流程（作废定时器/播报总冠军/按配置清背包/整场重置回大厅重新开始），
+	# 不等本局打完；victoryTeamName不传=不再另记一分（本分已由上面加过），
+	# endGameFlag防重入保证不会双重重启
+	def ExternalAddSeriesWin(self, scoreName, count=1):
+		if not scoreName:
+			return False
+		self.seriesWinDict[scoreName] = self.seriesWinDict.get(scoreName, 0) + count
+		logger.info("[Series] 外部加分: {0} +{1} -> {2}".format(scoreName, count, self.seriesWinDict))
+		if self.seriesWinDict[scoreName] >= self.matchWinLimit:
+			self.matchOverFlag = True
+			self.SettleAndRecord(scoreName, "§6{0}§f夺得系列赛总冠军！".format(scoreName))
+		else:
+			self.BroadcastSeriesScore()
+		return True
+
 	# 定时器到时
 	def DelayStartClock(self):
 		yield -self.clockEndTime * 30

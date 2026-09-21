@@ -8,7 +8,8 @@ import config
 import messageConfig
 from mod_log import logger
 from coroutineMgrGas import CoroutineMgr
-from gameModes.modeFactory import CreateGameMode, DefaultModeKey, GetGameModeKey, PickRandomModeKey, RandomModeKey
+from gameModes.modeFactory import (ClassicModeKey, CreateGameMode, DefaultModeKey,
+	GetGameModeKey, PickRandomModeKey, RandomModeKey, TrapModeKey)
 from modCommon.gomokuCore.board import (
 	GomokuBoard,
 	EMPTY,
@@ -160,6 +161,9 @@ class GomokuServerSystem(ServerSystem):
 		else:
 			self.gameMode = CreateGameMode(self)
 		self.gameMode.OnEnter()
+		# 运行时模式切换（#changemode命令）：None=没有切换、按config.GameMode走；
+		# 被切过则压过配置（config="random"也不再随机），下一局开局生效
+		self.gameModeOverride = None
 		self.ListenEvent()
 
 	def ListenEvent(self):
@@ -305,7 +309,13 @@ class GomokuServerSystem(ServerSystem):
 		self.Announce("§e本局§6{}人§e乱斗：棋盘§6{}x{}§e，每人自成一方，先连成五子者获胜！".format(
 			playerCount, self.boardSize, self.boardSize))
 		self.announceThrottleTime = {}
-		self.respawnHoldUntilDict = {}  # 上一局残留的阵亡冷却不带到下一局
+		# 上一局残留的阵亡冷却不带到下一局：客户端的移动封锁同步解除
+		# （duration=0，见OnDeathHold）
+		for heldId in self.respawnHoldUntilDict:
+			data = self.CreateEventData()
+			data['duration'] = 0
+			self.NotifyToClient(heldId, config.DeathHoldEvent, data)
+		self.respawnHoldUntilDict = {}
 		self.reflectShieldSet = set()  # 反伤药水护盾不跨局（道具都回收了，护盾跟着作废）
 		self.ClearAllSpeedBoosts()  # 加速药水效果同理不跨局：全体恢复原速
 		self.dizzyStunUntilDict = {}  # 眩晕锤的眩晕同理不跨局
@@ -365,22 +375,29 @@ class GomokuServerSystem(ServerSystem):
 	# ---------- 玩法模式：每局定夺（OnRoundStart在棋盘重铺后、刷新启动前调） ----------
 
 	def SwitchGameModeForRound(self):
-		"""决定本局用哪个玩法模式并播报（config.GameMode="random"时每局重掷）。
-		随机抽到与上局同模式：沿用当前对象只跑OnRoundStart（局内重置），不做
-		白费的OnExit/OnEnter；抽到不同的：旧模式先OnExit收尾（陷阱模式在这里
-		收回残留岩浆、关掉踩雷判定）-> 换对象OnEnter -> 新模式OnRoundStart做
-		本局场地准备。固定"classic"/"trap"则永远不换，只跑OnRoundStart。
-		切完无论换没换都全服播报本局模式（文案见messageConfig的mode_段，
-		模式用RoundAnnounceKey自报具体条目，没报的用只报名字的通用模板）"""
+		"""决定本局用哪个玩法模式并播报。模式来源优先级：#changemode命令的
+		运行时切换（gameModeOverride，下一局生效）> config.GameMode（重进地图
+		生效）；被切换过则config="random"也不再随机——运行时选择压过配置。
+		与上局同模式：沿用当前对象只跑OnRoundStart（局内重置），不做白费的
+		OnExit/OnEnter；不同的：旧模式先OnExit收尾（陷阱模式在这里收回残留
+		岩浆、关掉踩雷判定）-> 换对象OnEnter -> 新模式OnRoundStart做本局
+		场地准备。切完无论换没换都全服播报本局模式（文案见messageConfig的
+		mode_段，模式用RoundAnnounceKey自报具体条目，没报的用只报名字的
+		通用模板）"""
+		modeKey = self.gameModeOverride if self.gameModeOverride is not None else GetGameModeKey()
 		newMode = None
-		if GetGameModeKey() == RandomModeKey:
+		if modeKey == RandomModeKey:
 			newMode = CreateGameMode(self, PickRandomModeKey())
+		elif modeKey != getattr(self.gameMode, 'Key', None):
+			# 固定模式与当前不同：#changemode运行时切换的落地（config固定模式
+			# 与开局对象一致时走不到这，行为与原来完全相同）
+			newMode = CreateGameMode(self, modeKey)
 		if newMode is not None and type(newMode) is not type(self.gameMode):
 			oldName = getattr(self.gameMode, 'Name', '未知模式')
 			self.gameMode.OnExit()
 			self.gameMode = newMode
 			self.gameMode.OnEnter()
-			logger.info("[Gomoku] 本局随机换模式: {} -> {}".format(oldName, newMode.Name))
+			logger.info("[Gomoku] 本局换模式: {} -> {}".format(oldName, newMode.Name))
 		self.gameMode.OnRoundStart()
 		announceKey = getattr(self.gameMode, 'RoundAnnounceKey', None) or 'mode_round'
 		self.Msg(announceKey, name=self.gameMode.Name)
@@ -463,13 +480,20 @@ class GomokuServerSystem(ServerSystem):
 	def BuildScoreBoardData(self):
 		"""比分数据：data['rows'] = [[整行文字, RGBA], ...]，按本局棋子值排序
 		（没分到值的排在最后），只列在场玩家。分数=跨局累计的系列赛胜场。
-		文字里不写§颜色码（文字板是否支持§未验证），颜色走rgba由客户端SetBoardTextColor"""
+		文字里不写§颜色码（文字板是否支持§未验证），颜色走rgba由客户端SetBoardTextColor。
+		胜场读EndLogic的seriesWinDict（夺冠整场重置后它清零，两块牌自动一致）；
+		EndLogic缺席时退回本mod的playerWinCountDict（此时它就是唯一计分）"""
+		endLogicServerSystem = serverApi.GetSystem(config.EndLogicModName, config.EndLogicServerSystemName)
+		seriesSummary = endLogicServerSystem.GetSeriesScoreSummary() if endLogicServerSystem else None
 		rows = []
 		for playerId in sorted(self.playerIds,
 				key=lambda pid: (self.playerPieceValueDict.get(pid, config.FFAMaxPlayers + 1), pid)):
 			color = self.GetPlayerColor(playerId)
 			name = self.GetPlayerName(playerId) or "玩家"
-			wins = self.playerWinCountDict.get(playerId, 0)
+			if seriesSummary is not None:
+				wins = seriesSummary.get(name, 0)
+			else:
+				wins = self.playerWinCountDict.get(playerId, 0)
 			if self.playerPieceValueDict.get(playerId):
 				text = "{}({})  {}".format(name, color["name"], wins)
 			else:
@@ -1043,6 +1067,7 @@ class GomokuServerSystem(ServerSystem):
 			# 手持笔刷右键 -> 在比分文字板附近给自己涂一场胜场（对空气右键走
 			# OnItemTryUse，两条入口同一去处，去重见HandleBrushUse）
 			self.HandleBrushUse(playerId)
+			return
 		if itemType == 'blackhole':
 			# 手持吞噬黑洞右键 -> 吞噬棋盘上全部棋子（对空气右键走OnItemTryUse，
 			# 两条入口同一去处，去重见HandleBlackholeUse）
@@ -1413,7 +1438,8 @@ class GomokuServerSystem(ServerSystem):
 		logger.info("[Gomoku] 吞噬黑洞: 清除{}枚棋子 ({})".format(stoneCount, playerId))
 
 	def HandleBoardPickUse(self, playerId, pos):
-		"""手持破盘镐右键棋盘基座 -> 拆掉该格基座：本局该格无法落子（没有基座方块可
+		"""手持破盘镐右键棋盘基座 -> 拆掉该格基座（主盘格/便携棋盘扩展格都能拆，
+		判定走IsPlayableCell）：本局该格无法落子（没有基座方块可
 		右键），格子里的浮空棋石不受影响；新一局开始时基座整层重铺，拆掉的格子自动修复
 		（见OnRoundStart）。基座destroy_time=100000，左键长挖到不了挖穿事件，故走
 		右键即拆（与墨水/雷管同一条ServerItemUseOnEvent通道——物品不带netease:weapon
@@ -1421,7 +1447,7 @@ class GomokuServerSystem(ServerSystem):
 		只能拆基座——右键矿/棋石/地形/已拆的洞一律不响应也不消耗。
 		耐久1，拆一次即碎"""
 		blockName = self.GetBlockName(pos)
-		onBoard = self.IsOnBoard(pos)
+		onBoard = self.IsPlayableCell(pos)  # 主盘本局存在的格 或 便携棋盘扩展格（曾只认主盘，扩展格拆不掉）
 		logger.info("[Gomoku] 破盘镐右键: pos={} blockName={} onBoard={}".format(pos, blockName, onBoard))
 		if not onBoard or not self.IsChessBaseBlock(blockName):
 			# 不在棋盘/不是基座（矿/棋石/地形/已拆的洞）：节流提示，不响应不消耗。
@@ -1437,9 +1463,11 @@ class GomokuServerSystem(ServerSystem):
 		self.RunCommand('/setblock {} {} {} air'.format(pos[0], pos[1], pos[2]))
 		gx, gy = self.WorldToGrid(pos)
 		if self.board.get(gx, gy) == EMPTY:
-			# 该格没有浮空棋石：从本局形状里除名——满盘判定不再等这格
-			# （它永远填不上了）；有浮空棋石的格保留（那格算已占用）
+			# 该格没有浮空棋石：从本局可落子格里除名——满盘判定不再等这格
+			# （它永远填不上了）；有浮空棋石的格保留（那格算已占用）。
+			# 扩展格同步从extensionCells除名：本局可用便携棋盘在原地重新补铺
 			self.boardCells.discard((pos[0], pos[2]))
+			self.extensionCells.discard((pos[0], pos[2]))
 		self.Msg('board_pick_removed')
 		logger.info("[Gomoku] 破盘镐拆格: {} ({})".format(pos, playerId))
 
@@ -1607,7 +1635,9 @@ class GomokuServerSystem(ServerSystem):
 		与换位符/药水同款双入口（指方块右键走OnItemUseOn、对空气右键走
 		OnItemTryUse——站在记分牌前多半是对着空气点，主要靠后者），brushUseTime
 		做1秒去重防同次点击双触发。
-		★成功后立刻广播比分（BroadcastScoreBoard），文字板当场跳数"""
+		胜场以EndLogic的seriesWinDict为权威（ExternalAddSeriesWin记分，达到
+		夺冠线由它立即整场重置）；本mod的playerWinCountDict只在EndLogic缺席时
+		兜底显示；★成功后立刻双广播，两块牌当场跳数"""
 		now = time.time()
 		if now - self.brushUseTime.get(playerId, 0) < 1.0:
 			return
@@ -1615,12 +1645,12 @@ class GomokuServerSystem(ServerSystem):
 		logger.info("[Gomoku] 笔刷右键: {} 手持={}".format(playerId, self.GetCarriedItemName(playerId)))
 		if not config.ScoreBoardAnchor:
 			# 比分文字板功能关掉了，笔刷无处可涂（不消耗，免得白扣一个道具）
-			self.SendMessageToPlayer(playerId, "§c本局没有比分记分牌，笔刷无处可用")
+			self.MsgPlayer(playerId, 'brush_no_board')
 			return
 		posComp = serverApi.GetEngineCompFactory().CreatePos(playerId)
 		myPos = posComp.GetPos() if posComp else None
 		if not myPos:
-			self.SendMessageToPlayer(playerId, "§c笔刷失败：无法读取你的位置")
+			self.MsgPlayer(playerId, 'brush_fail_pos')
 			logger.warning("[Gomoku] 笔刷读取位置失败: {}".format(playerId))
 			return
 		# 锚点方块中心与玩家的三维直线距离
@@ -1630,16 +1660,23 @@ class GomokuServerSystem(ServerSystem):
 		dz = myPos[2] - (anchor[2] + 0.5)
 		distance = math.sqrt(dx * dx + dy * dy + dz * dz)
 		if distance > config.BrushUseRadius:
-			self.SendMessageToPlayer(playerId, "§c离比分记分牌太远（还差{:.1f}格），走近点再涂".format(
-				distance - config.BrushUseRadius))
+			self.MsgPlayer(playerId, 'brush_too_far',
+				distance=round(distance - config.BrushUseRadius, 1))
 			return
 		if not self.ConsumeCarriedItem(playerId):
 			return
+		playerName = self.GetPlayerName(playerId) or messageConfig.FALLBACK_PLAYER_NAME
 		self.playerWinCountDict[playerId] = self.playerWinCountDict.get(playerId, 0) + config.BrushWinBonus
+		endLogicServerSystem = serverApi.GetSystem(config.EndLogicModName, config.EndLogicServerSystemName)
+		wins = self.playerWinCountDict[playerId]
+		if endLogicServerSystem:
+			# 权威计分+夺冠判定都在EndLogic（seriesWinDict——几局几胜/大记分牌；
+			# 涂满夺冠线时它会立即整场重置）。播报的"现有N胜"也读它的权威分：
+			# 本mod的本地缓存在夺冠重置后不回零，读它会虚高
+			endLogicServerSystem.ExternalAddSeriesWin(playerName, config.BrushWinBonus)
+			wins = endLogicServerSystem.GetSeriesScoreSummary().get(playerName, 0)
 		self.BroadcastScoreBoard()
-		playerName = self.GetPlayerName(playerId) or "玩家"
-		self.Announce("§e{}§f用笔刷在记分牌上给自己涂了§6{}§f分（现有{}胜）！".format(
-			playerName, config.BrushWinBonus, self.playerWinCountDict[playerId]))
+		self.Msg('brush_painted', player=playerName, count=config.BrushWinBonus, wins=wins)
 		logger.info("[Gomoku] 笔刷涂分: {} +{} -> {} (距记分牌{:.2f}格)".format(
 			playerId, config.BrushWinBonus, self.playerWinCountDict[playerId], distance))
 
@@ -2159,6 +2196,12 @@ class GomokuServerSystem(ServerSystem):
 		if holdSeconds <= 0:
 			return
 		self.respawnHoldUntilDict[playerId] = time.time() + holdSeconds
+		# 客户端同步关掉移动输入：冷却期间人已自动重生但站定不能动——挖掘/
+		# 拾取/落子/攻击这些交互在服务端拦（IsRespawnHeld），移动是客户端
+		# 权威只能在客户端关（DeathHoldEvent，见gomokuClientSystem的输入冻结）
+		data = self.CreateEventData()
+		data['duration'] = holdSeconds
+		self.NotifyToClient(playerId, config.DeathHoldEvent, data)
 		self.Msg('death_announce',
 			player=self.GetPlayerName(playerId) or messageConfig.FALLBACK_PLAYER_NAME,
 			seconds=holdSeconds)
@@ -2322,13 +2365,14 @@ class GomokuServerSystem(ServerSystem):
 	# ---------- 调试聊天命令 ----------
 
 	def OnServerChat(self, args):
-		"""调试命令入口（config.DebugChatCommands开关，正式对战请关掉）：
+		"""命令入口。#changemode 是玩法控制命令（不走调试开关，正式对战也可用）：
+		在经典/陷阱模式间来回切，压过config.GameMode，下一局开局生效
+		（见SwitchGameModeForRound的gameModeOverride）。
+		其余为调试命令（config.DebugChatCommands开关，正式对战请关掉）：
 		聊天输入 #give <道具名> 直接把道具发到自己背包；#give 不带参数列出全部可领道具。
 		#chaos [秒] 直接让自己进入混乱状态（不消耗道具、不需要敌方在场，方便单人
 		测视角/移速反向）；#unchaos 提前解除自己的混乱。
 		命令消息会被cancel，不广播到公屏。道具名用道具表的短名（如 便携棋盘/处决剑）"""
-		if not config.DebugChatCommands:
-			return
 		playerId = args.get('playerId')
 		if not playerId:
 			return
@@ -2340,6 +2384,22 @@ class GomokuServerSystem(ServerSystem):
 			return
 		args['cancel'] = True
 		parts = msg.split()
+		if parts[0] == u'#changemode':
+			# 运行时切换玩法模式：按当前模式的反方向切（经典<->陷阱来回），
+			# 下一局开局生效；等待阶段输入则紧接着的开局就用新模式
+			currentKey = getattr(self.gameMode, 'Key', None)
+			if currentKey == TrapModeKey:
+				self.gameModeOverride = ClassicModeKey
+			else:
+				self.gameModeOverride = TrapModeKey
+			newMode = CreateGameMode(self, self.gameModeOverride)
+			newName = newMode.Name if newMode else u'未知模式'
+			self.Msg('mode_switched', name=newName)
+			logger.info("[Gomoku] #changemode: 下一局模式 -> {} ({})".format(
+				self.gameModeOverride, playerId))
+			return
+		if not config.DebugChatCommands:
+			return
 		if parts[0] == u'#chaos':
 			# 调试：直接对自己施加混乱（秒数缺省用配置值，如 #chaos 30）
 			seconds = config.ChaosPotionConfuseSeconds
